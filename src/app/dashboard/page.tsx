@@ -2,6 +2,7 @@
 
 import React, {
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -89,25 +90,36 @@ type RetailerChat = {
 export default function RetailerDashboardPage() {
   const router = useRouter();
 
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] =
+    useState<string>('dashboard');
 
-  const [walletBalance, setWalletBalance] = useState(48950);
+  const [walletBalance, setWalletBalance] =
+    useState<number>(48950);
 
   const [selectedService, setSelectedService] =
     useState<PortalService | null>(null);
 
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState('All');
+  const [search, setSearch] =
+    useState<string>('');
+
+  const [category, setCategory] =
+    useState<string>('All');
 
   /* =======================================================
      WALLET
   ======================================================= */
 
-  const [walletAmount, setWalletAmount] = useState('');
-  const [utr, setUtr] = useState('');
+  const [walletAmount, setWalletAmount] =
+    useState<string>('');
 
-  const [walletHistory, setWalletHistory] = useState<any[]>([]);
-  const [serviceHistory, setServiceHistory] = useState<any[]>([]);
+  const [utr, setUtr] =
+    useState<string>('');
+
+  const [walletHistory, setWalletHistory] =
+    useState<any[]>([]);
+
+  const [serviceHistory, setServiceHistory] =
+    useState<any[]>([]);
 
   const [serviceStatuses, setServiceStatuses] =
     useState<Record<string, boolean>>({});
@@ -116,36 +128,48 @@ export default function RetailerDashboardPage() {
      CHAT
   ======================================================= */
 
-  const [chatOpen, setChatOpen] = useState(false);
-  const [chatText, setChatText] = useState('');
-  const [chatLogs, setChatLogs] = useState<ChatMessage[]>([]);
-  const [retailerId, setRetailerId] = useState('');
+  const [chatOpen, setChatOpen] =
+    useState<boolean>(false);
+
+  const [chatText, setChatText] =
+    useState<string>('');
+
+  const [chatLogs, setChatLogs] =
+    useState<ChatMessage[]>([]);
+
+  const [retailerId, setRetailerId] =
+    useState<string>('');
 
   /* =======================================================
      PROFILE
   ======================================================= */
 
   const [profileName, setProfileName] =
-    useState('SANJAY KUMAR');
+    useState<string>('SANJAY KUMAR');
 
   const [profileMobile, setProfileMobile] =
-    useState('9267916288');
+    useState<string>('9267916288');
 
   const [profileEmail, setProfileEmail] =
-    useState('sanjay@mgpvtltd.com');
+    useState<string>('sanjay@mgpvtltd.com');
 
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  const [oldPassword, setOldPassword] =
+    useState<string>('');
+
+  const [newPassword, setNewPassword] =
+    useState<string>('');
 
   /* =======================================================
      RETAILER ID
   ======================================================= */
 
   useEffect(() => {
-    let id = localStorage.getItem('retailer_id');
+    let id =
+      localStorage.getItem('retailer_id');
 
     if (!id) {
-      id = localStorage.getItem('user_id');
+      id =
+        localStorage.getItem('user_id');
     }
 
     if (!id) {
@@ -161,6 +185,45 @@ export default function RetailerDashboardPage() {
   }, []);
 
   /* =========================================================
+     GET CURRENT CHAT
+  ========================================================= */
+
+  const getMyChat = (): RetailerChat | null => {
+    try {
+      if (!retailerId) {
+        return null;
+      }
+
+      const raw =
+        localStorage.getItem(
+          CHAT_DB_KEY
+        );
+
+      if (!raw) {
+        return null;
+      }
+
+      const parsed =
+        JSON.parse(raw);
+
+      if (!Array.isArray(parsed)) {
+        return null;
+      }
+
+      const chat =
+        parsed.find(
+          (x: RetailerChat) =>
+            String(x.retailerId) ===
+            String(retailerId)
+        );
+
+      return chat || null;
+    } catch {
+      return null;
+    }
+  };
+
+  /* =========================================================
      LOAD CHAT
   ========================================================= */
 
@@ -171,24 +234,30 @@ export default function RetailerDashboardPage() {
         return;
       }
 
-      const raw = localStorage.getItem(CHAT_DB_KEY);
+      const raw =
+        localStorage.getItem(
+          CHAT_DB_KEY
+        );
 
       if (!raw) {
         setChatLogs([]);
         return;
       }
 
-      const parsed: unknown = JSON.parse(raw);
+      const parsed =
+        JSON.parse(raw);
 
       if (!Array.isArray(parsed)) {
         setChatLogs([]);
         return;
       }
 
-      const myChat = parsed.find(
-        (chat: RetailerChat) =>
-          String(chat.retailerId) === String(retailerId)
-      );
+      const myChat =
+        parsed.find(
+          (chat: RetailerChat) =>
+            String(chat.retailerId) ===
+            String(retailerId)
+        );
 
       if (!myChat) {
         setChatLogs([]);
@@ -201,7 +270,11 @@ export default function RetailerDashboardPage() {
           : []
       );
     } catch (error) {
-      console.error('Chat load error:', error);
+      console.error(
+        'Chat load error:',
+        error
+      );
+
       setChatLogs([]);
     }
   };
@@ -216,31 +289,40 @@ export default function RetailerDashboardPage() {
     }
 
     try {
-      const raw = localStorage.getItem(CHAT_DB_KEY);
+      const raw =
+        localStorage.getItem(
+          CHAT_DB_KEY
+        );
 
       if (!raw) {
         return;
       }
 
-      const parsed: unknown = JSON.parse(raw);
+      const parsed =
+        JSON.parse(raw);
 
       if (!Array.isArray(parsed)) {
         return;
       }
 
-      const index = parsed.findIndex(
-        (chat: RetailerChat) =>
-          String(chat.retailerId) === String(retailerId)
-      );
+      const index =
+        parsed.findIndex(
+          (chat: RetailerChat) =>
+            String(chat.retailerId) ===
+            String(retailerId)
+        );
 
       if (index < 0) {
         return;
       }
 
-      const chat = parsed[index];
+      const chat =
+        parsed[index];
 
       if (
-        Number(chat.retailerUnreadCount || 0) === 0
+        Number(
+          chat.retailerUnreadCount || 0
+        ) === 0
       ) {
         return;
       }
@@ -256,7 +338,9 @@ export default function RetailerDashboardPage() {
       );
 
       window.dispatchEvent(
-        new Event('super_chat_updated')
+        new Event(
+          'super_chat_updated'
+        )
       );
     } catch (error) {
       console.error(
@@ -284,40 +368,50 @@ export default function RetailerDashboardPage() {
 
   const loadData = () => {
     try {
-      const bal = localStorage.getItem(
-        'retailerWalletBalance'
-      );
+      const bal =
+        localStorage.getItem(
+          'retailerWalletBalance'
+        );
 
       if (bal !== null) {
-        const parsed = Number(bal);
+        const parsed =
+          Number(bal);
 
-        if (Number.isFinite(parsed)) {
+        if (
+          Number.isFinite(parsed)
+        ) {
           setWalletBalance(parsed);
         }
       }
 
-      const walletRaw = localStorage.getItem(
-        'wallet_requests_db'
-      );
+      const walletRaw =
+        localStorage.getItem(
+          'wallet_requests_db'
+        );
 
-      const serviceRaw = localStorage.getItem(
-        'service_requests_db'
-      );
+      const serviceRaw =
+        localStorage.getItem(
+          'service_requests_db'
+        );
 
-      const statusRaw = localStorage.getItem(
-        'master_service_statuses'
-      );
+      const statusRaw =
+        localStorage.getItem(
+          'master_service_statuses'
+        );
 
       let walletParsed: any[] = [];
       let serviceParsed: any[] = [];
       let statusParsed: Record<string, boolean> = {};
 
       try {
-        const parsed = JSON.parse(
-          walletRaw || '[]'
-        );
+        const parsed =
+          JSON.parse(
+            walletRaw || '[]'
+          );
 
-        if (Array.isArray(parsed)) {
+        if (
+          Array.isArray(parsed)
+        ) {
           walletParsed = parsed;
         }
       } catch {
@@ -325,11 +419,14 @@ export default function RetailerDashboardPage() {
       }
 
       try {
-        const parsed = JSON.parse(
-          serviceRaw || '[]'
-        );
+        const parsed =
+          JSON.parse(
+            serviceRaw || '[]'
+          );
 
-        if (Array.isArray(parsed)) {
+        if (
+          Array.isArray(parsed)
+        ) {
           serviceParsed = parsed;
         }
       } catch {
@@ -337,25 +434,33 @@ export default function RetailerDashboardPage() {
       }
 
       try {
-        const parsed = JSON.parse(
-          statusRaw || '{}'
-        );
+        const parsed =
+          JSON.parse(
+            statusRaw || '{}'
+          );
 
         if (
           parsed &&
           typeof parsed === 'object' &&
           !Array.isArray(parsed)
         ) {
-          statusParsed =
-            parsed as Record<string, boolean>;
+          statusParsed = parsed;
         }
       } catch {
         statusParsed = {};
       }
 
-      setWalletHistory(walletParsed);
-      setServiceHistory(serviceParsed);
-      setServiceStatuses(statusParsed);
+      setWalletHistory(
+        walletParsed
+      );
+
+      setServiceHistory(
+        serviceParsed
+      );
+
+      setServiceStatuses(
+        statusParsed
+      );
     } catch (error) {
       console.error(
         'Dashboard load error:',
@@ -373,12 +478,13 @@ export default function RetailerDashboardPage() {
   }, []);
 
   /* =========================================================
-     EVENTS
+     CHAT + DATA EVENTS
   ========================================================= */
 
   useEffect(() => {
     if (!retailerId) {
-      return;
+      setChatLogs([]);
+      return undefined;
     }
 
     loadChat();
@@ -432,15 +538,16 @@ export default function RetailerDashboardPage() {
 
     window.addEventListener(
       'service_updated',
-      loadData
+      handleWalletUpdate
     );
 
-    const interval = window.setInterval(
-      () => {
-        loadChat();
-      },
-      1000
-    );
+    const interval =
+      window.setInterval(
+        () => {
+          loadChat();
+        },
+        1000
+      );
 
     return () => {
       window.removeEventListener(
@@ -460,346 +567,19 @@ export default function RetailerDashboardPage() {
 
       window.removeEventListener(
         'service_updated',
-        loadData
+        handleWalletUpdate
       );
 
-      window.clearInterval(interval);
+      window.clearInterval(
+        interval
+      );
     };
   }, [retailerId]);
 
-  /* =========================================================
-     SERVICE
-  ========================================================= */
-
-  const openService = (
-    service: PortalService
-  ) => {
-    setSelectedService(service);
-  };
-
-  /*
-   * IMPORTANT:
-   * useMemo हटाया गया है ताकि create-id conditional return
-   * से पहले/बाद Hooks order की problem न आए।
-   */
-
-  let visibleServices =
-    allServices.filter(
-      (s) =>
-        s.active !== false &&
-        serviceStatuses[s.id] !== false
-    );
-
-  if (category !== 'All') {
-    visibleServices =
-      visibleServices.filter(
-        (s) =>
-          s.category === category
-      );
-  }
-
-  if (search.trim()) {
-    const q = search.toLowerCase();
-
-    visibleServices =
-      visibleServices.filter((s) =>
-        `${s.title} ${s.category} ${s.description}`
-          .toLowerCase()
-          .includes(q)
-      );
-  }
-
-  const categoryForTab =
-    sectionMap[activeTab];
-
-  const sectionServices =
-    categoryForTab
-      ? allServices.filter(
-          (s) =>
-            s.category ===
-              categoryForTab &&
-            serviceStatuses[s.id] !== false
-        )
-      : [];
-
-  /* =======================================================
-     WALLET REQUEST
-  ======================================================= */
-
-  const submitWalletRequest = (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
-
-    const amount = Number(walletAmount);
-
-    if (
-      !Number.isFinite(amount) ||
-      amount < 10
-    ) {
-      alert(
-        'Minimum wallet load amount ₹10 है।'
-      );
-      return;
-    }
-
-    const cleanUtr = utr.trim();
-
-    if (cleanUtr.length < 6) {
-      alert(
-        'कृपया सही UTR / Transaction Reference Number दर्ज करें।'
-      );
-      return;
-    }
-
-    const req = {
-      id: Date.now(),
-      retailerId,
-      retailerName: profileName,
-      mobile: profileMobile,
-      amount: Number(
-        amount.toFixed(2)
-      ),
-      utr: cleanUtr,
-      status: 'Pending',
-      date: new Date().toLocaleDateString(
-        'en-IN'
-      ),
-      timestamp: new Date().toISOString(),
-    };
-
-    try {
-      const oldRaw =
-        localStorage.getItem(
-          'wallet_requests_db'
-        );
-
-      let old: any[] = [];
-
-      try {
-        const parsed = JSON.parse(
-          oldRaw || '[]'
-        );
-
-        if (Array.isArray(parsed)) {
-          old = parsed;
-        }
-      } catch {
-        old = [];
-      }
-
-      localStorage.setItem(
-        'wallet_requests_db',
-        JSON.stringify([
-          req,
-          ...old,
-        ])
-      );
-
-      window.dispatchEvent(
-        new Event('wallet_updated')
-      );
-
-      setWalletAmount('');
-      setUtr('');
-
-      alert(
-        'Wallet load request admin के पास भेज दी गई है। Approval के बाद राशि wallet में add होगी।'
-      );
-
-      loadData();
-    } catch (error) {
-      console.error(
-        'Wallet request error:',
-        error
-      );
-
-      alert(
-        'कुछ त्रुटि हुई। कृपया दोबारा प्रयास करें।'
-      );
-    }
-  };
-
-  /* =======================================================
-     SEND RETAILER CHAT
-  ======================================================= */
-
-  const sendChat = (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
-
-    const cleanText =
-      chatText.trim();
-
-    if (!cleanText) {
-      return;
-    }
-
-    if (!retailerId) {
-      alert(
-        'Retailer ID नहीं मिली। कृपया दोबारा login करें।'
-      );
-      return;
-    }
-
-    const now =
-      new Date().toISOString();
-
-    const newMessage: ChatMessage = {
-      id:
-        Date.now() +
-        Math.floor(
-          Math.random() * 1000
-        ),
-      sender: 'retailer',
-      text: cleanText,
-      timestamp: now,
-    };
-
-    try {
-      const raw =
-        localStorage.getItem(
-          CHAT_DB_KEY
-        );
-
-      let chats: RetailerChat[] = [];
-
-      try {
-        const parsed =
-          JSON.parse(
-            raw || '[]'
-          );
-
-        if (Array.isArray(parsed)) {
-          chats =
-            parsed as RetailerChat[];
-        }
-      } catch {
-        chats = [];
-      }
-
-      const existingIndex =
-        chats.findIndex(
-          (chat) =>
-            String(
-              chat.retailerId
-            ) ===
-            String(retailerId)
-        );
-
-      let updatedChat:
-        RetailerChat;
-
-      if (existingIndex >= 0) {
-        const oldChat =
-          chats[
-            existingIndex
-          ];
-
-        const oldMessages =
-          Array.isArray(
-            oldChat.messages
-          )
-            ? oldChat.messages
-            : [];
-
-        const oldUnread =
-          Number(
-            oldChat.adminUnreadCount || 0
-          );
-
-        updatedChat = {
-          ...oldChat,
-          retailerId,
-          retailerName:
-            profileName,
-          mobile:
-            profileMobile,
-          messages: [
-            ...oldMessages,
-            newMessage,
-          ],
-          updatedAt: now,
-          adminUnreadCount:
-            oldUnread + 1,
-          retailerUnreadCount:
-            Number(
-              oldChat.retailerUnreadCount ||
-                0
-            ),
-        };
-
-        chats[
-          existingIndex
-        ] = updatedChat;
-      } else {
-        updatedChat = {
-          retailerId,
-          retailerName:
-            profileName,
-          mobile:
-            profileMobile,
-          messages: [
-            newMessage,
-          ],
-          updatedAt: now,
-          adminUnreadCount: 1,
-          retailerUnreadCount: 0,
-        };
-
-        chats.unshift(
-          updatedChat
-        );
-      }
-
-      localStorage.setItem(
-        CHAT_DB_KEY,
-        JSON.stringify(chats)
-      );
-
-      setChatLogs(
-        updatedChat.messages
-      );
-
-      setChatText('');
-
-      window.dispatchEvent(
-        new Event(
-          'super_chat_updated'
-        )
-      );
-    } catch (error) {
-      console.error(
-        'Send chat error:',
-        error
-      );
-
-      alert(
-        'Message send नहीं हुआ।'
-      );
-    }
-  };
-
-  /* =======================================================
-     LOGOUT
-  ======================================================= */
-
-  const logout = () => {
-    localStorage.removeItem(
-      'retailer_logged_in'
-    );
-
-    router.push(
-      '/auth/login'
-    );
-  };
-
   /* =======================================================
      CREATE PARTNER ID
-     
      IMPORTANT:
-     अब यह return सभी Hooks के बाद है।
+     यह useEffect के बाहर है।
   ======================================================= */
 
   if (activeTab === 'create-id') {
@@ -866,6 +646,404 @@ export default function RetailerDashboardPage() {
       </main>
     );
   }
+
+  /* =======================================================
+     SERVICE
+  ======================================================= */
+
+  const openService = (
+    service: PortalService
+  ) => {
+    setSelectedService(service);
+  };
+
+  const visibleServices =
+    useMemo(() => {
+      let list =
+        allServices.filter(
+          (s) =>
+            s.active !== false &&
+            serviceStatuses[s.id] !==
+              false
+        );
+
+      if (category !== 'All') {
+        list =
+          list.filter(
+            (s) =>
+              s.category ===
+              category
+          );
+      }
+
+      if (search.trim()) {
+        const q =
+          search.toLowerCase();
+
+        list =
+          list.filter((s) =>
+            `${s.title} ${s.category} ${s.description}`
+              .toLowerCase()
+              .includes(q)
+          );
+      }
+
+      return list;
+    }, [
+      category,
+      search,
+      serviceStatuses,
+    ]);
+
+  /* =======================================================
+     CATEGORY SERVICES
+  ======================================================= */
+
+  const sectionServices =
+    useMemo(() => {
+      const categoryForTab =
+        sectionMap[activeTab];
+
+      if (!categoryForTab) {
+        return [];
+      }
+
+      return allServices.filter(
+        (s) =>
+          s.category ===
+            categoryForTab &&
+          s.active !== false &&
+          serviceStatuses[s.id] !==
+            false
+      );
+    }, [
+      activeTab,
+      serviceStatuses,
+    ]);
+
+  /* =======================================================
+     WALLET REQUEST
+  ======================================================= */
+
+  const submitWalletRequest = (
+    e: React.FormEvent
+  ) => {
+    e.preventDefault();
+
+    const amount =
+      Number(walletAmount);
+
+    if (
+      !Number.isFinite(amount) ||
+      amount < 10
+    ) {
+      alert(
+        'Minimum wallet load amount ₹10 है।'
+      );
+      return;
+    }
+
+    const cleanUtr =
+      utr.trim();
+
+    if (
+      cleanUtr.length < 6
+    ) {
+      alert(
+        'कृपया सही UTR / Transaction Reference Number दर्ज करें।'
+      );
+      return;
+    }
+
+    const req = {
+      id: Date.now(),
+
+      retailerId,
+
+      retailerName:
+        profileName,
+
+      mobile:
+        profileMobile,
+
+      amount:
+        Number(
+          amount.toFixed(2)
+        ),
+
+      utr:
+        cleanUtr,
+
+      status:
+        'Pending',
+
+      date:
+        new Date().toLocaleDateString(
+          'en-IN'
+        ),
+
+      timestamp:
+        new Date().toISOString(),
+    };
+
+    try {
+      const oldRaw =
+        localStorage.getItem(
+          'wallet_requests_db'
+        );
+
+      let old: any[] =
+        [];
+
+      try {
+        const parsed =
+          JSON.parse(
+            oldRaw || '[]'
+          );
+
+        if (
+          Array.isArray(parsed)
+        ) {
+          old = parsed;
+        }
+      } catch {
+        old = [];
+      }
+
+      localStorage.setItem(
+        'wallet_requests_db',
+        JSON.stringify([
+          req,
+          ...old,
+        ])
+      );
+
+      window.dispatchEvent(
+        new Event(
+          'wallet_updated'
+        )
+      );
+
+      setWalletAmount('');
+      setUtr('');
+
+      alert(
+        'Wallet load request admin के पास भेज दी गई है। Approval के बाद राशि wallet में add होगी।'
+      );
+
+      loadData();
+    } catch (error) {
+      console.error(
+        'Wallet request error:',
+        error
+      );
+
+      alert(
+        'कुछ त्रुटि हुई। कृपया दोबारा प्रयास करें।'
+      );
+    }
+  };
+
+  /* =======================================================
+     SEND RETAILER CHAT
+  ======================================================= */
+
+  const sendChat = (
+    e: React.FormEvent
+  ) => {
+    e.preventDefault();
+
+    const cleanText =
+      chatText.trim();
+
+    if (!cleanText) {
+      return;
+    }
+
+    if (!retailerId) {
+      alert(
+        'Retailer ID नहीं मिली। कृपया दोबारा login करें।'
+      );
+      return;
+    }
+
+    const now =
+      new Date().toISOString();
+
+    const newMessage: ChatMessage = {
+      id:
+        Date.now() +
+        Math.floor(
+          Math.random() * 1000
+        ),
+
+      sender:
+        'retailer',
+
+      text:
+        cleanText,
+
+      timestamp:
+        now,
+    };
+
+    try {
+      const raw =
+        localStorage.getItem(
+          CHAT_DB_KEY
+        );
+
+      let chats: RetailerChat[] =
+        [];
+
+      try {
+        const parsed =
+          JSON.parse(
+            raw || '[]'
+          );
+
+        if (
+          Array.isArray(parsed)
+        ) {
+          chats = parsed;
+        }
+      } catch {
+        chats = [];
+      }
+
+      const existingIndex =
+        chats.findIndex(
+          (chat) =>
+            String(
+              chat.retailerId
+            ) ===
+            String(retailerId)
+        );
+
+      let updatedChat:
+        RetailerChat;
+
+      if (
+        existingIndex >= 0
+      ) {
+        const oldChat =
+          chats[
+            existingIndex
+          ];
+
+        const oldMessages =
+          Array.isArray(
+            oldChat.messages
+          )
+            ? oldChat.messages
+            : [];
+
+        const oldUnread =
+          Number(
+            oldChat.adminUnreadCount || 0
+          );
+
+        updatedChat = {
+          ...oldChat,
+
+          retailerId,
+
+          retailerName:
+            profileName,
+
+          mobile:
+            profileMobile,
+
+          messages: [
+            ...oldMessages,
+            newMessage,
+          ],
+
+          updatedAt:
+            now,
+
+          adminUnreadCount:
+            oldUnread + 1,
+
+          retailerUnreadCount:
+            Number(
+              oldChat.retailerUnreadCount || 0
+            ),
+        };
+
+        chats[
+          existingIndex
+        ] = updatedChat;
+      } else {
+        updatedChat = {
+          retailerId,
+
+          retailerName:
+            profileName,
+
+          mobile:
+            profileMobile,
+
+          messages: [
+            newMessage,
+          ],
+
+          updatedAt:
+            now,
+
+          adminUnreadCount:
+            1,
+
+          retailerUnreadCount:
+            0,
+        };
+
+        chats.unshift(
+          updatedChat
+        );
+      }
+
+      localStorage.setItem(
+        CHAT_DB_KEY,
+        JSON.stringify(chats)
+      );
+
+      setChatLogs(
+        updatedChat.messages
+      );
+
+      setChatText('');
+
+      window.dispatchEvent(
+        new Event(
+          'super_chat_updated'
+        )
+      );
+    } catch (error) {
+      console.error(
+        'Send chat error:',
+        error
+      );
+
+      alert(
+        'Message send नहीं हुआ।'
+      );
+    }
+  };
+
+  /* =======================================================
+     LOGOUT
+  ======================================================= */
+
+  const logout = () => {
+    localStorage.removeItem(
+      'retailer_logged_in'
+    );
+
+    router.push(
+      '/auth/login'
+    );
+  };
 
   /* =======================================================
      UI
@@ -1159,7 +1337,6 @@ export default function RetailerDashboardPage() {
                       }
                       className="rounded-xl border border-slate-700 bg-slate-900/80 px-3 py-2 text-xs"
                     >
-
                       <option>
                         All
                       </option>
@@ -1171,7 +1348,6 @@ export default function RetailerDashboardPage() {
                           </option>
                         )
                       )}
-
                     </select>
 
                   </div>
@@ -1382,6 +1558,7 @@ export default function RetailerDashboardPage() {
           onClick={() => {
             if (!chatOpen) {
               markAdminMessagesAsRead();
+              loadChat();
             }
 
             setChatOpen(
@@ -1703,9 +1880,9 @@ function ServiceGrid({
 
                 <div className="font-black text-emerald-300">
                   ₹
-                  {Number(
-                    s.fee || 0
-                  ).toFixed(2)}
+                  {s.fee.toFixed(
+                    2
+                  )}
                 </div>
 
               </div>
@@ -2207,7 +2384,7 @@ function Support({
   retailerMobile: string;
   chatLogs: ChatMessage[];
   chatText: string;
-  setChatText: (v: string) => void;
+  setChatText: (value: string) => void;
   sendChat: (
     e: React.FormEvent
   ) => void;
