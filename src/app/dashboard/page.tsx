@@ -79,16 +79,6 @@ type RetailerChat = {
   mobile: string;
   messages: ChatMessage[];
   updatedAt: string;
-
-  /*
-   * IMPORTANT
-   *
-   * adminUnreadCount:
-   * Retailer के कितने नए messages Admin ने अभी तक नहीं पढ़े।
-   *
-   * retailerUnreadCount:
-   * Admin के कितने नए replies Retailer ने अभी तक नहीं पढ़े।
-   */
   adminUnreadCount?: number;
   retailerUnreadCount?: number;
 };
@@ -290,10 +280,7 @@ export default function RetailerDashboardPage() {
   };
 
   /* =========================================================
-     MARK ADMIN REPLIES AS READ BY RETAILER
-     
-     जब Retailer Support Chat खोलता है,
-     Admin के पुराने unread replies read हो जाएंगे।
+     MARK ADMIN REPLIES AS READ
   ========================================================= */
 
   const markAdminMessagesAsRead = () => {
@@ -365,28 +352,13 @@ export default function RetailerDashboardPage() {
 
   /* =========================================================
      OPEN SUPPORT CHAT
-     
-     Retailer जब अपना chat खोलता है:
-     Admin के replies read माने जाएंगे।
-     
-     ध्यान दें:
-     इससे adminUnreadCount ZERO नहीं होगा।
-     क्योंकि वह Admin के लिए अलग unread state है।
   ========================================================= */
 
   const openSupportChat = () => {
     setActiveTab('support');
-
     setChatOpen(true);
 
-    /*
-     * पहले current messages load करें
-     */
     loadChat();
-
-    /*
-     * Admin के replies को retailer ने पढ़ लिया
-     */
     markAdminMessagesAsRead();
   };
 
@@ -427,39 +399,67 @@ export default function RetailerDashboardPage() {
           'master_service_statuses'
         );
 
-      const walletParsed =
-        JSON.parse(
-          walletRaw || '[]'
-        );
+      let walletParsed: any[] = [];
+      let serviceParsed: any[] = [];
+      let statusParsed: Record<string, boolean> = {};
 
-      const serviceParsed =
-        JSON.parse(
-          serviceRaw || '[]'
-        );
+      try {
+        const parsed =
+          JSON.parse(
+            walletRaw || '[]'
+          );
 
-      const statusParsed =
-        JSON.parse(
-          statusRaw || '{}'
-        );
+        if (
+          Array.isArray(parsed)
+        ) {
+          walletParsed = parsed;
+        }
+      } catch {
+        walletParsed = [];
+      }
+
+      try {
+        const parsed =
+          JSON.parse(
+            serviceRaw || '[]'
+          );
+
+        if (
+          Array.isArray(parsed)
+        ) {
+          serviceParsed = parsed;
+        }
+      } catch {
+        serviceParsed = [];
+      }
+
+      try {
+        const parsed =
+          JSON.parse(
+            statusRaw || '{}'
+          );
+
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          !Array.isArray(parsed)
+        ) {
+          statusParsed = parsed;
+        }
+      } catch {
+        statusParsed = {};
+      }
 
       setWalletHistory(
-        Array.isArray(walletParsed)
-          ? walletParsed
-          : []
+        walletParsed
       );
 
       setServiceHistory(
-        Array.isArray(serviceParsed)
-          ? serviceParsed
-          : []
+        serviceParsed
       );
 
       setServiceStatuses(
-        statusParsed &&
-          typeof statusParsed ===
-            'object'
-          ? statusParsed
-          : {}
+        statusParsed
       );
     } catch (error) {
       console.error(
@@ -470,12 +470,16 @@ export default function RetailerDashboardPage() {
   };
 
   /* =========================================================
-     INITIAL EVENTS
+     INITIAL LOAD
   ========================================================= */
 
   useEffect(() => {
     loadData();
   }, []);
+
+  /* =========================================================
+     EVENTS
+  ========================================================= */
 
   useEffect(() => {
     if (!retailerId) {
@@ -544,22 +548,7 @@ export default function RetailerDashboardPage() {
         1000
       );
 
-    if (activeTab === 'create-id') {
-    return (
-      <main style={{ minHeight: '100vh', background: '#060b14', color: '#fff', padding: '28px 18px' }}>
-        <div style={{ maxWidth: 1180, margin: '0 auto' }}>
-          <div style={{ marginBottom: 22, padding: 24, borderRadius: 24, border: '1px solid rgba(34,211,238,.18)', background: 'linear-gradient(135deg,#0b1220,#111827)' }}>
-            <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 2, color: '#67e8f9' }}>MG PVT LTD • PARTNER NETWORK</div>
-            <h1 style={{ margin: '8px 0 4px', fontSize: 32, fontWeight: 900 }}>Create Partner ID</h1>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: 13 }}>Role-based hierarchy • Dynamic UPI QR • Fixed creation fee</p>
-          </div>
-          <CreateIdPanel />
-        </div>
-      </main>
-    );
-  }
-
-  return () => {
+    return () => {
       window.removeEventListener(
         'storage',
         handleStorage
@@ -585,6 +574,78 @@ export default function RetailerDashboardPage() {
       );
     };
   }, [retailerId]);
+
+  /* =======================================================
+     CREATE PARTNER ID
+     
+     IMPORTANT:
+     यह useEffect के बाहर है।
+  ======================================================= */
+
+  if (activeTab === 'create-id') {
+    return (
+      <main
+        style={{
+          minHeight: '100vh',
+          background: '#060b14',
+          color: '#fff',
+          padding: '28px 18px',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1180,
+            margin: '0 auto',
+          }}
+        >
+          <div
+            style={{
+              marginBottom: 22,
+              padding: 24,
+              borderRadius: 24,
+              border:
+                '1px solid rgba(34,211,238,.18)',
+              background:
+                'linear-gradient(135deg,#0b1220,#111827)',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 12,
+                fontWeight: 900,
+                letterSpacing: 2,
+                color: '#67e8f9',
+              }}
+            >
+              MG PVT LTD • PARTNER NETWORK
+            </div>
+
+            <h1
+              style={{
+                margin: '8px 0 4px',
+                fontSize: 32,
+                fontWeight: 900,
+              }}
+            >
+              Create Partner ID
+            </h1>
+
+            <p
+              style={{
+                margin: 0,
+                color: '#94a3b8',
+                fontSize: 13,
+              }}
+            >
+              Role-based hierarchy • Dynamic UPI QR • Fixed creation fee
+            </p>
+          </div>
+
+          <CreateIdPanel />
+        </div>
+      </main>
+    );
+  }
 
   /* =======================================================
      SERVICE
@@ -719,7 +780,8 @@ export default function RetailerDashboardPage() {
           'wallet_requests_db'
         );
 
-      let old: any[] = [];
+      let old: any[] =
+        [];
 
       try {
         const parsed =
@@ -772,15 +834,6 @@ export default function RetailerDashboardPage() {
 
   /* =======================================================
      SEND RETAILER CHAT
-     
-     IMPORTANT:
-     हर retailer का अपना chat record रहेगा।
-     
-     Retailer message भेजते ही:
-       adminUnreadCount + 1
-     
-     इससे Admin Dashboard पर केवल unread messages
-     का count दिखाई देगा।
   ======================================================= */
 
   const sendChat = (
@@ -873,12 +926,6 @@ export default function RetailerDashboardPage() {
             ? oldChat.messages
             : [];
 
-        /*
-         * VERY IMPORTANT
-         *
-         * पुराना unread count बचाकर रखें।
-         * नया retailer message आने पर +1 करें।
-         */
         const oldUnread =
           Number(
             oldChat.adminUnreadCount || 0
@@ -906,10 +953,6 @@ export default function RetailerDashboardPage() {
           adminUnreadCount:
             oldUnread + 1,
 
-          /*
-           * Admin के पुराने replies का unread
-           * retailer के लिए जैसा है वैसा रहेगा।
-           */
           retailerUnreadCount:
             Number(
               oldChat.retailerUnreadCount || 0
@@ -920,9 +963,6 @@ export default function RetailerDashboardPage() {
           existingIndex
         ] = updatedChat;
       } else {
-        /*
-         * नया retailer
-         */
         updatedChat = {
           retailerId,
 
@@ -962,9 +1002,6 @@ export default function RetailerDashboardPage() {
 
       setChatText('');
 
-      /*
-       * Admin Dashboard को तुरंत notification
-       */
       window.dispatchEvent(
         new Event(
           'super_chat_updated'
