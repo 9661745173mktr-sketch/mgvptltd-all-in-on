@@ -1,8 +1,32 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { requireAdmin } from './adminAuth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+router.use(requireAdmin);
+
+router.get('/stats', async (_req, res) => {
+  try {
+    const [users, pendingUsers, activeUsers, requests, pendingRequests, approvedRequests, rejectedRequests, walletTransactions] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { accountStatus: 'Pending' } }),
+      prisma.user.count({ where: { accountStatus: 'Active' } }),
+      prisma.serviceRequest.count(),
+      prisma.serviceRequest.count({ where: { status: 'PENDING' } }),
+      prisma.serviceRequest.count({ where: { status: 'APPROVED' } }),
+      prisma.serviceRequest.count({ where: { status: 'REJECTED' } }),
+      prisma.walletTransaction.findMany({ where: { status: { in: ['SUCCESS', 'APPROVED'] } }, select: { amount: true } }),
+    ]);
+    const totalWallet = (await prisma.user.aggregate({ _sum: { walletBalance: true } }))._sum.walletBalance || 0;
+    const totalRevenue = (await prisma.serviceRequest.aggregate({ where: { status: 'APPROVED' }, _sum: { amountPaid: true } }))._sum.amountPaid || 0;
+    const totalWalletTransactions = walletTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    res.json({ stats: { users, pendingUsers, activeUsers, requests, pendingRequests, approvedRequests, rejectedRequests, totalWallet, totalRevenue, totalWalletTransactions } });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 router.get('/users', async (_req, res) => {
   try {
@@ -65,7 +89,7 @@ router.post('/service-requests/:id/approve', async (req, res) => {
     if (request.status !== 'PENDING') return res.status(400).json({ error: `Request is already ${request.status}` });
     const updated = await prisma.serviceRequest.update({
       where: { id: request.id },
-      data: { status: 'APPROVED', adminRemark: req.body?.remark ? String(req.body.remark) : null, adminId: req.body?.adminId ? String(req.body.adminId) : null },
+      data: { status: 'APPROVED', adminRemark: req.body?.remark ? String(req.body.remark) : null },
       include: { service: true },
     });
     res.json({ success: true, message: 'Service request approved.', request: updated });
@@ -88,7 +112,7 @@ router.post('/service-requests/:id/reject', async (req, res) => {
       }
       return tx.serviceRequest.update({
         where: { id: request.id },
-        data: { status: 'REJECTED', refundProcessed: true, adminRemark: req.body?.remark ? String(req.body.remark) : null, adminId: req.body?.adminId ? String(req.body.adminId) : null },
+        data: { status: 'REJECTED', refundProcessed: true, adminRemark: req.body?.remark ? String(req.body.remark) : null },
       });
     });
     res.json({ success: true, message: 'Request rejected and wallet refunded.', request: updated });
@@ -147,6 +171,25 @@ router.post('/wallet/recharge-requests/:id/reject', async (req, res) => {
     res.json({ success: true, message: 'Recharge request rejected.', transaction: updated });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/wallet/manual-credit', async (req, res) => {
+  try {
+    const mobile = String(req.body?.mobile || '').trim();
+    const amount = Number(req.body?.amount);
+    const remark = String(req.body?.remark || 'Admin manual wallet credit');
+    if (!mobile || !Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: 'Valid mobile and positive amount are required.' });
+    const result = await prisma.$transaction(async tx => {
+      const user = await tx.user.findUnique({ where: { phone: mobile } });
+      if (!user) throw new Error('User not found for this mobile number.');
+      const updatedUser = await tx.user.update({ where: { id: user.id }, data: { walletBalance: { increment: amount } } });
+      const transaction = await tx.walletTransaction.create({ data: { userId: user.id, type: 'ADMIN_CREDIT', amount, reference: `ADMIN-${Date.now()}`, description: remark, status: 'SUCCESS' } });
+      return { user: { id: updatedUser.id, name: updatedUser.name, phone: updatedUser.phone, walletBalance: updatedUser.walletBalance }, transaction };
+    });
+    res.json({ success: true, message: `₹${amount} credited to ${result.user.name || result.user.phone}.`, ...result });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
   }
 });
 
