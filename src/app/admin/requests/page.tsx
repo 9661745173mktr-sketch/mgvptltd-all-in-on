@@ -1,110 +1,113 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+
+function authHeaders() {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('adminToken') : '';
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 export default function AdminServiceRequests() {
   const [requests, setRequests] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const loadRequests = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/service-requests?status=PENDING`, {
+        headers: authHeaders(),
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Unable to load service requests.');
+      setRequests(Array.isArray(data.requests) ? data.requests : []);
+    } catch (err: any) {
+      setError(err?.message || 'Unable to load service requests.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // LocalStorage से डेटा लोड करना (अगर नहीं है तो डमी डेटा दिखाना ताकि टेबल खाली न रहे)
-    const loadRequests = () => {
-      const saved = localStorage.getItem('serviceRequests');
-      if (saved) {
-        setRequests(JSON.parse(saved));
-      } else {
-        const initial = [
-          { id: 1, serviceName: 'Mobile No Update', clientName: 'demo', mobile: '8544284429', fee: '₹150', status: 'Pending' }
-        ];
-        localStorage.setItem('serviceRequests', JSON.stringify(initial));
-        setRequests(initial);
-      }
-    };
     loadRequests();
   }, []);
 
-  const handleAction = (id: number, newStatus: string) => {
-    const updated = requests.map(req => 
-      req.id === id ? { ...req, status: newStatus } : req
-    );
-    setRequests(updated);
-    localStorage.setItem('serviceRequests', JSON.stringify(updated));
-    
-    // साइडबार काउंटर को तुरंत अपडेट करने के लिए इवेंट ट्रिगर करना
-    window.dispatchEvent(new Event('storage'));
-    
-    alert(`Request ${newStatus} successfully!`);
+  const handleAction = async (id: string, action: 'approve' | 'reject') => {
+    setBusyId(id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/service-requests/${encodeURIComponent(id)}/${action}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ adminId: 'ADMIN' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request ${action} failed.`);
+      await loadRequests();
+      alert(action === 'approve' ? 'Request approved successfully.' : 'Request rejected and wallet refund processed.');
+    } catch (err: any) {
+      alert(err?.message || 'Action failed.');
+    } finally {
+      setBusyId(null);
+    }
   };
-
-  const pendingCount = requests.filter(r => r.status === 'Pending').length;
 
   return (
     <div style={{ color: '#fff', fontFamily: 'Inter, sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0' }}>All Merged Service Requests</h1>
-          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Review, approve, reject or refund service requests</p>
+          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>Live database requests — approve, reject or refund.</p>
         </div>
-        <div style={{ background: 'rgba(56, 189, 248, 0.150)', border: '1px solid rgba(56, 189, 248, 0.3)', padding: '8px 16px', borderRadius: '10px', fontSize: '14px', fontWeight: 'bold', color: '#38bdf8' }}>
-          Pending Total: {pendingCount}
-        </div>
+        <button onClick={loadRequests} disabled={loading} style={{ background: '#2563eb', color: '#fff', border: 0, padding: '9px 14px', borderRadius: '8px', fontWeight: 700 }}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </button>
       </div>
 
-      <div style={{ background: 'rgba(15, 23, 42, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '16px', overflow: 'hidden', backdropFilter: 'blur(15px)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+      {error && <div style={{ marginBottom: 15, padding: 12, borderRadius: 10, background: 'rgba(239,68,68,.12)', border: '1px solid rgba(239,68,68,.35)', color: '#fca5a5' }}>{error}</div>}
+
+      <div style={{ marginBottom: 15, color: '#38bdf8', fontWeight: 800 }}>Pending Total: {requests.length}</div>
+
+      <div style={{ background: 'rgba(15, 23, 42, 0.7)', border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '16px', overflow: 'auto', backdropFilter: 'blur(15px)' }}>
+        <table style={{ width: '100%', minWidth: 800, borderCollapse: 'collapse', textAlign: 'left' }}>
           <thead>
             <tr style={{ background: 'rgba(30, 41, 59, 0.5)', borderBottom: '1px solid rgba(255, 255, 255, 0.1)', fontSize: '13px', color: '#94a3b8' }}>
-              <th style={{ padding: '16px' }}>Service Name</th>
-              <th style={{ padding: '16px' }}>Client Name</th>
+              <th style={{ padding: '16px' }}>Service</th>
+              <th style={{ padding: '16px' }}>Real Name</th>
               <th style={{ padding: '16px' }}>Mobile</th>
+              <th style={{ padding: '16px' }}>Role</th>
               <th style={{ padding: '16px' }}>Fee</th>
               <th style={{ padding: '16px' }}>Status</th>
-              <th style={{ padding: '16px', textAlign: 'center' }}>Action Control</th>
+              <th style={{ padding: '16px', textAlign: 'center' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {requests.length === 0 ? (
-              <tr>
-                <td colSpan={6} style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>No Service Requests Found</td>
+            {loading ? (
+              <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>Loading live requests…</td></tr>
+            ) : requests.length === 0 ? (
+              <tr><td colSpan={7} style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>No pending service requests.</td></tr>
+            ) : requests.map((req) => (
+              <tr key={req.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '14px' }}>
+                <td style={{ padding: 16, fontWeight: 700 }}>{req.service?.title || req.serviceName || '—'}</td>
+                <td style={{ padding: 16, color: '#cbd5e1' }}>{req.user?.name || req.clientName || '—'}</td>
+                <td style={{ padding: 16, color: '#cbd5e1' }}>{req.user?.phone || req.mobile || '—'}</td>
+                <td style={{ padding: 16, color: '#38bdf8' }}>{req.user?.role || '—'}</td>
+                <td style={{ padding: 16, color: '#38bdf8', fontWeight: 800 }}>₹{Number(req.amountPaid || req.fee || 0).toFixed(2)}</td>
+                <td style={{ padding: 16 }}><span style={{ padding: '4px 10px', borderRadius: 20, background: 'rgba(234,179,8,.15)', color: '#facc15', fontWeight: 800 }}>{req.status || 'PENDING'}</span></td>
+                <td style={{ padding: 16, textAlign: 'center' }}>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
+                    <button disabled={busyId === req.id} onClick={() => handleAction(req.id, 'approve')} style={{ background: '#10b981', color: '#fff', border: 0, padding: '7px 12px', borderRadius: 8, fontWeight: 800 }}>{busyId === req.id ? '…' : 'Approve ✅'}</button>
+                    <button disabled={busyId === req.id} onClick={() => handleAction(req.id, 'reject')} style={{ background: '#ef4444', color: '#fff', border: 0, padding: '7px 12px', borderRadius: 8, fontWeight: 800 }}>Reject / Refund ❌</button>
+                  </div>
+                </td>
               </tr>
-            ) : (
-              requests.map((req) => (
-                <tr key={req.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)', fontSize: '14px' }}>
-                  <td style={{ padding: '16px', fontWeight: '600' }}>{req.serviceName}</td>
-                  <td style={{ padding: '16px', color: '#cbd5e1' }}>{req.clientName}</td>
-                  <td style={{ padding: '16px', color: '#cbd5e1' }}>{req.mobile}</td>
-                  <td style={{ padding: '16px', color: '#38bdf8', fontWeight: 'bold' }}>{req.fee}</td>
-                  <td style={{ padding: '16px' }}>
-                    <span style={{ 
-                      padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: 'bold',
-                      background: req.status === 'Approved' ? 'rgba(16, 185, 129, 0.2)' : req.status === 'Rejected' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(234, 179, 8, 0.2)',
-                      color: req.status === 'Approved' ? '#10b981' : req.status === 'Rejected' ? '#ef4444' : '#eab308',
-                      border: `1px solid ${req.status === 'Approved' ? 'rgba(16, 185, 129, 0.4)' : req.status === 'Rejected' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(234, 179, 8, 0.4'}`
-                    }}>
-                      {req.status || 'Pending'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '16px', textAlign: 'center' }}>
-                    {req.status === 'Pending' || !req.status ? (
-                      <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                        <button 
-                          onClick={() => handleAction(req.id, 'Approved')}
-                          style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
-                        >
-                          Approve ✅
-                        </button>
-                        <button 
-                          onClick={() => handleAction(req.id, 'Rejected')}
-                          style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}
-                        >
-                          Reject ❌
-                        </button>
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: '12px', color: '#64748b', fontStyle: 'italic' }}>Completed</span>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
+            ))}
           </tbody>
         </table>
       </div>
