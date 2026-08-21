@@ -157,6 +157,7 @@ model RazorpayPayment {
   orderId String @unique
   paymentId String? @unique
   amount Float
+  purpose String @default("WALLET_RECHARGE")
   status String @default("CREATED")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
