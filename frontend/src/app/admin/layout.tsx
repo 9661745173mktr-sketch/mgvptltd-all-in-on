@@ -1,102 +1,42 @@
 'use client';
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const [isClient, setIsClient] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setIsClient(true);
-  }, []);
+    if (pathname !== '/admin/login' && !sessionStorage.getItem('admin_token')) router.replace('/admin/login');
+    setReady(true);
+  }, [pathname, router]);
 
-  if (!isClient) {
-    return <div style={{ background: '#090d16', minHeight: '100vh' }} />;
-  }
+  if (!ready) return <div style={{ background: '#090d16', minHeight: '100vh' }} />;
+  if (pathname === '/admin/login') return <>{children}</>;
 
-  // अगर लॉगिन पेज है तो साइडबार न दिखाएं
-  if (pathname === '/admin/login') {
-    return <>{children}</>;
-  }
-
- const menuItems = [
-    { name: 'Dashboard & Stats', href: '/admin/dashboard', icon: '📊' },
-    { name: 'Service Requests', href: '/admin/service-requests', icon: '📥' },
-    { name: 'Wallet Load Requests', href: '/admin/wallet-requests', icon: '💰' },
-    { name: 'Aadhaar Service Control', href: '/admin/aadhaar-requests', icon: '🆔' },
-    { name: 'User Hierarchy', href: '/admin/user-hierarchy', icon: '👥' },
-    { name: 'Wallet & Transactions', href: '/admin/wallet-transactions', icon: '💳' },
-    { name: 'Master Services Control', href: '/admin/services-control', icon: '⚙️' },
+  const menuItems = [
+    ['Dashboard & Stats', '/admin/dashboard', '📊'],
+    ['ID Requests', '/admin/requests', '🪪'],
+    ['Service Requests', '/admin/service-requests', '📥'],
+    ['Wallet Load Requests', '/admin/wallet-requests', '💰'],
+    ['Aadhaar Service Control', '/admin/aadhaar-requests', '🆔'],
+    ['User Hierarchy', '/admin/user-hierarchy', '👥'],
+    ['Wallet & Transactions', '/admin/wallet-transactions', '💳'],
+    ['Master Services Control', '/admin/services-control', '⚙️'],
   ];
 
   return (
     <div style={{ display: 'flex', background: '#090d16', minHeight: '100vh', color: '#fff', fontFamily: 'Inter, sans-serif' }}>
-      
-      {/* साइडबार */}
-      <aside style={{ width: '270px', background: '#0f172a', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column', padding: '20px', position: 'fixed', height: '100vh', boxSizing: 'border-box' }}>
-        
-        {/* ब्रांडिंग */}
-        <div style={{ background: 'linear-gradient(135deg, #1e293b 0%, #0f172a 100%)', padding: '15px', borderRadius: '12px', border: '1px solid #334155', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '40px', height: '40px', background: '#38bdf8', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', color: '#000', fontSize: '18px' }}>
-            MG
-          </div>
-          <div>
-            <div style={{ fontWeight: '800', fontSize: '15px', color: '#fff' }}>MG Pvt Ltd</div>
-            <div style={{ fontSize: '11px', color: '#38bdf8', fontWeight: '600', letterSpacing: '0.5px' }}>MASTER ADMIN OS</div>
-          </div>
-        </div>
-
-        {/* नेविगेशन लिंक्स */}
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
-          {menuItems.map((item) => {
-            const isActive = pathname === item.href;
-            return (
-              <Link 
-                key={item.href} 
-                href={item.href}
-                style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '12px', 
-                  padding: '12px 15px', 
-                  borderRadius: '10px', 
-                  textDecoration: 'none', 
-                  fontSize: '14px', 
-                  fontWeight: '600',
-                  color: isActive ? '#fff' : '#94a3b8',
-                  background: isActive ? 'linear-gradient(90deg, #0284c7 0%, #0369a1 100%)' : 'transparent',
-                  boxShadow: isActive ? '0 4px 12px rgba(2, 132, 199, 0.3)' : 'none',
-                  transition: 'all 0.2s ease'
-                }}
-              >
-                <span style={{ fontSize: '16px' }}>{item.icon}</span>
-                <span>{item.name}</span>
-              </Link>
-            );
-          })}
+      <aside style={{ width: 270, background: '#0f172a', borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column', padding: 20, position: 'fixed', height: '100vh', boxSizing: 'border-box' }}>
+        <div style={{ background: '#111827', padding: 15, borderRadius: 12, border: '1px solid #334155', marginBottom: 25, display: 'flex', alignItems: 'center', gap: 12 }}><div style={{ width: 40, height: 40, background: '#38bdf8', borderRadius: 8, display: 'grid', placeItems: 'center', color: '#000', fontWeight: 900 }}>MG</div><div><div style={{ fontWeight: 800 }}>MG Pvt Ltd</div><div style={{ fontSize: 11, color: '#38bdf8' }}>MASTER ADMIN OS</div></div></div>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 8, flex: 1 }}>
+          {menuItems.map(([name, href, icon]) => <Link key={href} href={href} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 15px', borderRadius: 10, textDecoration: 'none', color: pathname === href ? '#fff' : '#94a3b8', background: pathname === href ? '#0369a1' : 'transparent', fontWeight: 600, fontSize: 14 }}><span>{icon}</span><span>{name}</span></Link>)}
         </nav>
-
-        {/* लॉगआउट बटन */}
-        <div style={{ borderTop: '1px solid #1e293b', paddingTop: '15px' }}>
-          <button 
-            onClick={() => {
-              localStorage.removeItem('isAdminLoggedIn');
-              window.location.href = '/admin/login';
-            }}
-            style={{ width: '100%', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid #ef4444', color: '#ef4444', padding: '11px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
-          >
-            🔒 Logout Portal
-          </button>
-        </div>
-
+        <button onClick={() => { sessionStorage.removeItem('admin_token'); sessionStorage.removeItem('admin_profile'); sessionStorage.removeItem('isAdminLoggedIn'); router.replace('/admin/login'); }} style={{ width: '100%', background: 'rgba(239,68,68,.1)', border: '1px solid #ef4444', color: '#ef4444', padding: 11, borderRadius: 8, fontWeight: 'bold' }}>🔒 Logout Portal</button>
       </aside>
-
-      {/* मुख्य कंटेंट एरिया */}
-      <main style={{ marginLeft: '270px', flex: 1, padding: '30px', boxSizing: 'border-box', overflowY: 'auto' }}>
-        {children}
-      </main>
-
+      <main style={{ marginLeft: 270, flex: 1, padding: 30, boxSizing: 'border-box', overflowY: 'auto' }}>{children}</main>
     </div>
   );
 }
