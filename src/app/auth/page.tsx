@@ -3,7 +3,21 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000';
+// Normalize the public API URL before passing it to fetch(). This prevents the
+// browser's native "The string did not match the expected pattern" error when
+// the Vercel environment variable contains whitespace or an invalid URL.
+const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
+const API_BASE = (() => {
+  if (!RAW_API_BASE) return '';
+  try {
+    const url = new URL(RAW_API_BASE);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+})();
+const apiUrl = (path: string) => `${API_BASE}${path}`;
 
 export default function AuthPage() {
   const router = useRouter();
@@ -18,16 +32,16 @@ export default function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage('');
-    const endpoint = isLogin ? `${API_BASE}/api/auth/login` : `${API_BASE}/api/auth/register`;
+    const endpoint = isLogin ? apiUrl('/api/auth/login') : apiUrl('/api/auth/register');
     const saved = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || 'null') : null;
     const payload = isLogin
-      ? { email, password }
+      ? { email: email.trim(), password }
       : { name: name.trim(), phone: phone.trim(), email: email.trim(), password, role, parentId: saved?.id || undefined };
 
     try {
       const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Something went wrong');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       if (isLogin) {
         localStorage.setItem('user', JSON.stringify(data.user));
         setMessage('Login Successful! Redirecting...');
@@ -36,7 +50,7 @@ export default function AuthPage() {
         setMessage('Request submitted. Admin payment verification ke baad ID activate hogi.');
         setTimeout(() => setIsLogin(true), 1200);
       }
-    } catch (err: any) { setMessage(err.message); }
+    } catch (err: any) { setMessage(err?.message || 'Something went wrong.'); }
   };
 
   return (
