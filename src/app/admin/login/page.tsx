@@ -2,7 +2,21 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+// Keep the API URL safe for browsers. A malformed NEXT_PUBLIC_API_BASE_URL can
+// make fetch() throw the native "The string did not match the expected pattern"
+// error before the request ever reaches the backend.
+const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
+const API_BASE = (() => {
+  if (!RAW_API_BASE) return '';
+  try {
+    const url = new URL(RAW_API_BASE);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+})();
+const apiUrl = (path: string) => `${API_BASE}${path}`;
 
 export default function AdminLoginPage() {
   const [identifier, setIdentifier] = useState('');
@@ -16,19 +30,20 @@ export default function AdminLoginPage() {
     setMessage('');
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/auth/admin-login`, {
+      const res = await fetch(apiUrl('/api/auth/admin-login'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Admin login failed.');
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `Admin login failed (${res.status}).`);
+      if (!data.token) throw new Error('Admin login response did not include a secure token.');
       localStorage.setItem('adminToken', data.token);
       localStorage.setItem('adminProfile', JSON.stringify(data.admin || {}));
       localStorage.setItem('isAdminLoggedIn', 'true');
       router.replace('/admin/dashboard');
     } catch (err: any) {
-      setMessage(err.message || 'Unable to login.');
+      setMessage(err?.message || 'Unable to login.');
     } finally {
       setLoading(false);
     }
