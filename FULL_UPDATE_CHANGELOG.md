@@ -12,3 +12,5 @@
 - Admin can upload a slip/document on service completion; it is saved with the request and user service history has View/Download.
 - Existing menus/pages are retained; changes are additive.
 - `RAZORPAY_LIVE_SETUP.md` contains environment/webhook deployment steps.
+- Service requests and Admin Approve/Reject now use the server API/Prisma database path instead of browser `localStorage`.
+- The live frontend expects `NEXT_PUBLIC_API_BASE_URL` to point at the deployed backend API.
