@@ -76,7 +76,7 @@ export default function ServiceRequestModal({
     if (!validate()) return;
     let fee = Number(service.fee || 0);
     try { const prices=JSON.parse(localStorage.getItem('master_service_prices')||'{}'); if(prices && prices[service.id] !== undefined) fee=Number(prices[service.id]); } catch {}
-    const userId = typeof window !== 'undefined' ? (localStorage.getItem('user_id') || localStorage.getItem('retailer_id') || '') : '';
+    const userId = typeof window !== 'undefined' ? (localStorage.getItem('user_id') || localStorage.getItem('retailer_id') || 'retailer-1') : 'retailer-1';
     if (fee > 0 && !debitService(fee, userId, service.title, service.id)) {
       alert(`Wallet balance कम है। इस सेवा के लिए ₹${fee.toFixed(2)} चाहिए। पहले wallet में balance add करें।`);
       return;

@@ -16,10 +16,6 @@ model User {
   role          String           @default("RETAILER")
   parentId      String?         
   walletBalance Float            @default(0.00)
-  accountStatus String            @default("Pending")
-  paymentStatus String            @default("Pending")
-  approvedAt    DateTime?
-  approvedBy    String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @default(now()) @updatedAt
   requests      ServiceRequest[]
@@ -150,12 +146,9 @@ model WalletTransaction {
   razorpayOrderId String?
   razorpayPaymentId String?
   status String @default("SUCCESS")
-  purpose String @default("WALLET_RECHARGE")
-  razorpayQrId String?
   createdAt DateTime @default(now())
   @@index([userId])
   @@index([razorpayPaymentId])
-  @@index([razorpayQrId])
 }
 
 model RazorpayPayment {
@@ -165,8 +158,6 @@ model RazorpayPayment {
   orderId String @unique
   paymentId String? @unique
   amount Float
-  purpose String @default("WALLET_RECHARGE")
-  qrId String?
   status String @default("CREATED")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

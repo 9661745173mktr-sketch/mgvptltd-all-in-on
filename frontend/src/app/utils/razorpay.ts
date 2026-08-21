@@ -17,12 +17,3 @@ export async function openRazorpayCheckout(opts:{amount:number;userId:string;nam
   checkout.on('payment.failed',(response:any)=>alert(response?.error?.description||'Payment failed'));
   checkout.open();
 }
-
-export async function createRazorpayQr(opts:{amount:number;userId:string;purpose?:string;apiBase:string;description?:string}){
-  const r=await fetch(`${opts.apiBase}/api/payments/razorpay/qr`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:opts.amount,userId:opts.userId,purpose:opts.purpose||'WALLET_RECHARGE',description:opts.description})}); const data=await r.json(); if(!r.ok) throw new Error(data.error||'Razorpay QR create failed'); return data;
-}
-export async function openRazorpayIdCheckout(opts:{amount:number;userId:string;name:string;phone?:string;email?:string;apiBase:string;onSuccess:(data:any)=>void}){
-  const ok=await loadRazorpay(); if(!ok) throw new Error('Razorpay Checkout उपलब्ध नहीं है');
-  const r=await fetch(`${opts.apiBase}/api/payments/razorpay/order`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({amount:opts.amount,userId:opts.userId,purpose:'ID_CREATION'})}); const order=await r.json(); if(!r.ok) throw new Error(order.error||'Order create failed');
-  const checkout=new window.Razorpay({key:order.keyId,amount:order.amount,currency:'INR',name:'MG PVT LTD',description:'Partner ID Creation Fee',order_id:order.orderId,prefill:{name:opts.name,contact:opts.phone,email:opts.email},theme:{color:'#2563eb'},handler:async(response:any)=>{const vr=await fetch(`${opts.apiBase}/api/payments/razorpay/verify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...response,userId:opts.userId})}); const data=await vr.json(); if(!vr.ok) throw new Error(data.error||'Payment verification failed'); opts.onSuccess(data);}}); checkout.on('payment.failed',(response:any)=>alert(response?.error?.description||'Payment failed')); checkout.open();
-}

@@ -10,12 +10,13 @@ const ADMIN_WALLET_KEY='adminWalletBalance';
 const TXN_KEY='wallet_transactions_db';
 const DEFAULT_ADMIN=0;
 
-export function getUserId(){ return typeof window==='undefined' ? '' : (localStorage.getItem('user_id') || localStorage.getItem('retailer_id') || ''); }
+export function getUserId(){ return typeof window==='undefined' ? 'retailer-1' : (localStorage.getItem('user_id') || localStorage.getItem('retailer_id') || 'retailer-1'); }
 export function getWallet(userId=getUserId()){
   if(typeof window==='undefined') return 0;
   const users=JSON.parse(localStorage.getItem(USERS_KEY)||'[]');
   const u=users.find((x:any)=>String(x.id)===String(userId));
-  return Number.isFinite(Number(u?.walletBalance)) ? Number(u.walletBalance) : 0;
+  const legacy=Number(localStorage.getItem('retailerWalletBalance'));
+  return Number.isFinite(Number(u?.walletBalance)) ? Number(u.walletBalance) : (Number.isFinite(legacy)?legacy:0);
 }
 export function setWallet(amount:number,userId=getUserId()){
   if(typeof window==='undefined') return;

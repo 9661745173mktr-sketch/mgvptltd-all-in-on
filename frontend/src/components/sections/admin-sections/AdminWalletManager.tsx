@@ -1,11 +1,120 @@
 'use client';
-import React,{useEffect,useState} from 'react';
-import {readUsers,saveUsers,addAdminNotification} from '../../../app/utils/authStore';
-import {addTxn,setAdminWallet} from '../../../app/utils/walletStore';
-export default function AdminWalletManager(){
- const [target,setTarget]=useState(''); const [amount,setAmount]=useState(''); const [remark,setRemark]=useState(''); const [users,setUsers]=useState<any[]>([]); const [tx,setTx]=useState<any[]>([]);
- const load=()=>{setUsers(readUsers().filter((u:any)=>String(u.role).toUpperCase()!=='ADMIN')); try{setTx(JSON.parse(localStorage.getItem('wallet_transactions_db')||'[]').slice(0,30))}catch{setTx([])}};
- useEffect(()=>{load();window.addEventListener('users_updated',load);window.addEventListener('wallet_updated',load);return()=>{window.removeEventListener('users_updated',load);window.removeEventListener('wallet_updated',load)}},[]);
- const credit=(e:React.FormEvent)=>{e.preventDefault();const a=Number(amount);const us=readUsers();const q=us.find((u:any)=>String(u.id)===target||String(u.phone)===target||String(u.email).toLowerCase()===target.toLowerCase());if(!q)return alert('User not found.');if(!a||a<=0)return alert('Valid amount enter karein.');q.walletBalance=Number(q.walletBalance||0)+a;saveUsers(us);setAdminWallet(Number.MAX_SAFE_INTEGER);addTxn({userId:q.id,type:'CREDIT',amount:a,description:remark||'Admin manual wallet credit',reference:`ADMIN-${Date.now()}`});addAdminNotification({type:'WALLET_CREDIT',title:'Admin Wallet Credit',message:`₹${a.toFixed(2)} credited to ${q.name||q.email}`,userId:q.id,amount:a,status:'Read'});setTarget('');setAmount('');setRemark('');alert(`₹${a.toFixed(2)} ${q.name||q.email} ke wallet me add ho gaya.`)};
- return <div><h1 style={{fontSize:24,fontWeight:900,color:'#fff'}}>Wallet & Transaction Manager</h1><p style={{color:'#94a3b8',fontSize:13}}>Admin source balance unlimited hai. User wallet individual hai.</p><div style={{display:'grid',gridTemplateColumns:'1fr 1.7fr',gap:25}}><div style={{background:'#0f172a',padding:25,borderRadius:16,border:'1px solid #1e293b'}}><h3 style={{color:'#38bdf8'}}>➕ Admin Wallet Credit</h3><form onSubmit={credit} style={{display:'flex',flexDirection:'column',gap:12}}><select value={target} onChange={e=>setTarget(e.target.value)} required style={{padding:12,background:'#0b132b',color:'#fff',border:'1px solid #334155',borderRadius:8}}><option value=''>Select user</option>{users.map(u=><option key={u.id} value={u.id}>{u.name||u.email} • {u.phone||u.id} • ₹{Number(u.walletBalance||0).toFixed(2)}</option>)}</select><input type='number' min='0.01' step='0.01' value={amount} onChange={e=>setAmount(e.target.value)} placeholder='Amount ₹' required style={{padding:12,background:'#0b132b',color:'#fff',border:'1px solid #334155',borderRadius:8}}/><input value={remark} onChange={e=>setRemark(e.target.value)} placeholder='Remark' style={{padding:12,background:'#0b132b',color:'#fff',border:'1px solid #334155',borderRadius:8}}/><button style={{padding:12,border:0,borderRadius:8,background:'#10b981',color:'#fff',fontWeight:800}}>Credit User Wallet 🚀</button></form></div><div style={{background:'#0f172a',padding:25,borderRadius:16,border:'1px solid #1e293b',overflowX:'auto'}}><h3 style={{color:'#fff'}}>Users & Wallets</h3><table style={{width:'100%',fontSize:12}}><thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th>Wallet</th><th>Status</th></tr></thead><tbody>{users.map(u=><tr key={u.id}><td>{u.name||'-'}</td><td>{u.phone||'-'}</td><td>{u.email}</td><td>₹{Number(u.walletBalance||0).toFixed(2)}</td><td>{u.accountStatus||'Pending'}</td></tr>)}</tbody></table><h4 style={{color:'#94a3b8',marginTop:20}}>Recent Transactions</h4>{tx.map((x:any)=><div key={x.id} style={{padding:'8px 0',borderBottom:'1px solid #1e293b',color:'#cbd5e1'}}>₹{Number(x.amount||0).toFixed(2)} • {x.description||x.type}</div>)}</div></div></div>
+import React, { useState, useEffect } from 'react';
+
+export default function AdminWalletManager() {
+  const [targetUser, setTargetUser] = useState('');
+  const [amount, setAmount] = useState('');
+  const [remark, setRemark] = useState('');
+  const [transactions, setTransactions] = useState<Array<any>>([
+    { id: 'tx-101', user: 'Rajesh Kumar (Retailer)', type: 'Credit (Wallet Load)', amount: '+₹500.00', date: '2026-08-18 11:15 AM', status: 'Success' },
+    { id: 'tx-102', user: 'Amit Sharma (Distributor)', type: 'Credit (Wallet Load)', amount: '+₹2,500.00', date: '2026-08-18 01:45 PM', status: 'Success' }
+  ]);
+
+  const [retailerBalance, setRetailerBalance] = useState<number>(400.00);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('retailerWalletBalance');
+    if (saved) setRetailerBalance(parseFloat(saved));
+  }, []);
+
+  const handleAddBalance = (e: React.FormEvent) => {
+    e.preventDefault();
+    const addAmt = parseFloat(amount);
+    if (!addAmt || addAmt <= 0) {
+      alert('Please enter a valid amount!');
+      return;
+    }
+
+    const newBal = retailerBalance + addAmt;
+    setRetailerBalance(newBal);
+    localStorage.setItem('retailerWalletBalance', newBal.toString());
+
+    const newTx = {
+      id: `tx-${Date.now().toString().slice(-4)}`,
+      user: targetUser || 'General User / Retailer',
+      type: 'Admin Manual Credit',
+      amount: `+₹${addAmt.toFixed(2)}`,
+      date: new Date().toLocaleString(),
+      status: 'Success'
+    };
+
+    setTransactions([newTx, ...transactions]);
+    setTargetUser('');
+    setAmount('');
+    setRemark('');
+    alert(`Successfully added ₹${addAmt} to user wallet! 💳`);
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: '25px' }}>
+        <h1 style={{ fontSize: '24px', fontWeight: '900', color: '#fff', marginBottom: '6px' }}>Wallet & Transaction Manager</h1>
+        <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>Manually allocate balance, load wallets, and monitor platform transactions.</p>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '25px' }}>
+        
+        {/* Left Box: Add Balance Form */}
+        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', padding: '25px', height: 'fit-content' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#38bdf8', marginBottom: '20px' }}>➕ Allocate / Add Wallet Balance</h3>
+          <form onSubmit={handleAddBalance} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: '#cbd5e1', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Target User (Name / Mobile / ID) *</label>
+              <input type="text" required placeholder="e.g. Rajesh Kumar (9876543210)" value={targetUser} onChange={(e) => setTargetUser(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', background: '#0b132b', border: '1px solid #334155', color: '#fff', outline: 'none' }} />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', color: '#cbd5e1', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Amount to Add (₹) *</label>
+              <input type="number" required placeholder="Enter amount" value={amount} onChange={(e) => setAmount(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', background: '#0b132b', border: '1px solid #334155', color: '#fff', outline: 'none' }} />
+            </div>
+
+            <div>
+              <label style={{ fontSize: '12px', color: '#cbd5e1', display: 'block', marginBottom: '6px', fontWeight: 'bold' }}>Admin Remark / Note</label>
+              <input type="text" placeholder="e.g. Offline cash received" value={remark} onChange={(e) => setRemark(e.target.value)} style={{ width: '100%', padding: '12px', borderRadius: '8px', background: '#0b132b', border: '1px solid #334155', color: '#fff', outline: 'none' }} />
+            </div>
+
+            <button type="submit" style={{ background: '#10b981', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>
+              Credit Balance to Wallet 🚀
+            </button>
+          </form>
+        </div>
+
+        {/* Right Box: Recent Transactions Table */}
+        <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', padding: '25px' }}>
+          <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#f8fafc', marginBottom: '20px' }}>📊 Global Transaction History</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
+              <thead>
+                <tr style={{ borderBottom: '1px solid #334155', color: '#94a3b8' }}>
+                  <th style={{ padding: '10px' }}>Tx ID</th>
+                  <th style={{ padding: '10px' }}>User</th>
+                  <th style={{ padding: '10px' }}>Type</th>
+                  <th style={{ padding: '10px' }}>Amount</th>
+                  <th style={{ padding: '10px' }}>Date</th>
+                  <th style={{ padding: '10px' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((tx) => (
+                  <tr key={tx.id} style={{ borderBottom: '1px solid #1e293b' }}>
+                    <td style={{ padding: '10px', color: '#94a3b8' }}>#{tx.id}</td>
+                    <td style={{ padding: '10px', fontWeight: 'bold', color: '#fff' }}>{tx.user}</td>
+                    <td style={{ padding: '10px', color: '#cbd5e1' }}>{tx.type}</td>
+                    <td style={{ padding: '10px', color: '#4ade80', fontWeight: 'bold' }}>{tx.amount}</td>
+                    <td style={{ padding: '10px', color: '#94a3b8', fontSize: '11px' }}>{tx.date}</td>
+                    <td style={{ padding: '10px' }}>
+                      <span style={{ background: 'rgba(74, 222, 128, 0.1)', color: '#4ade80', padding: '3px 8px', borderRadius: '20px', fontWeight: 'bold', fontSize: '11px' }}>
+                        {tx.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  );
 }

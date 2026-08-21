@@ -53,7 +53,7 @@ export default function AdminServiceRequestsPage() {
   const handleAction = (id: number, newStatus: string) => {
     const updated = requests.map(item => {
       if(item.id !== id) return item;
-      if(newStatus === 'Rejected' && !item.refundProcessed){ refundService(Number(item.amountPaid ?? item.fee ?? 0), item.userId || item.retailerId || '', `Refund: ${item.serviceName || item.title || 'Service'}`, String(item.id)); return {...item,status:newStatus,refundProcessed:true}; }
+      if(newStatus === 'Rejected' && !item.refundProcessed){ refundService(Number(item.amountPaid ?? item.fee ?? 0), item.userId || item.retailerId || 'retailer-1', `Refund: ${item.serviceName || item.title || 'Service'}`, String(item.id)); return {...item,status:newStatus,refundProcessed:true}; }
       return {...item,status:newStatus};
     });
     const uniqueUpdated = updated.filter((v, i, a) => v && v.id && i === a.findIndex(t => t && t.id === v.id));

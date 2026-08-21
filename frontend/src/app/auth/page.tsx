@@ -32,9 +32,6 @@ export default function AuthPage() {
       }
 
       if (isLogin) {
-        if (String(data.user?.accountStatus || 'Active').toLowerCase() !== 'active') {
-          throw new Error('Your ID is pending admin verification. Payment verify hone ke baad admin ID activate karega.');
-        }
         localStorage.setItem('user', JSON.stringify(data.user));
         setMessage('Login Successful! Redirecting...');
         setTimeout(() => {

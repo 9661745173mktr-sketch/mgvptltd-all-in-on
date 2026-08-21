@@ -37,4 +37,3 @@ Set these environment variables in the frontend deployment:
 - NEXT_PUBLIC_REMOTE_VPN_LINK = your authorized Remote/VPN URL
 - NEXT_PUBLIC_VHUI64_LINK = your authorized VHUI64 URL
 These buttons appear only in the Aadhaar Correction section.
-.

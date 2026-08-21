@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 // Register Route
 router.post('/register', async (req, res) => {
   try {
-    const { id, email, password, role, parentId, name, phone } = req.body;
+    const { email, password, role, parentId, name, phone } = req.body;
 
     const normalizedRole = String(role || 'RETAILER').toUpperCase();
     const allowed = ['MASTER_DISTRIBUTOR', 'SUPER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'];
@@ -41,20 +41,16 @@ router.post('/register', async (req, res) => {
 
     const user = await prisma.user.create({
       data: {
-        ...(id ? { id: String(id) } : {}),
         name,
         phone,
         email,
         password,
         role: normalizedRole,
         parentId: parentId ? String(parentId) : null,
-        walletBalance: 0,
-        accountStatus: 'Pending',
-        paymentStatus: 'Pending',
       },
     });
 
-    res.status(201).json({ message: 'Registration submitted. ID is DEACTIVE until admin verifies payment.', user: { ...user, password: undefined } });
+    res.json({ message: 'Registration Successful', user });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -66,10 +62,11 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body;
 
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || user.password !== password) { return res.status(400).json({ error: 'Invalid email or password' }); }
-    if (String(user.accountStatus).toLowerCase() !== 'active' || String(user.paymentStatus).toLowerCase() !== 'verified') { return res.status(403).json({ error: 'Your ID is DEACTIVE / PENDING VERIFICATION. Admin must verify payment and activate your ID before login.' }); }
-    const safeUser = { ...user, password: undefined };
-    res.json({ message: 'Login Successful', user: safeUser });
+    if (!user || user.password !== password) {
+      return res.status(400).json({ error: 'Invalid email or password' });
+    }
+
+    res.json({ message: 'Login Successful', user });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

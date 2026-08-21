@@ -14,7 +14,7 @@ export default function AdminServiceRequests({ requests }: { requests: Array<any
     let slipData='';
     if(slipFile){ slipData=await new Promise<string>((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(slipFile); }); }
     if(actionType==='Rejected' || actionType==='Refunded'){
-      if(!req.refundProcessed && Number(req.amountPaid ?? req.fee ?? 0)>0){ refundService(Number(req.amountPaid ?? req.fee ?? 0), req.userId || req.retailerId || '', `Refund: ${req.serviceName || req.title || 'Service'}`, String(req.id)); req.refundProcessed=true; }
+      if(!req.refundProcessed && Number(req.amountPaid ?? req.fee ?? 0)>0){ refundService(Number(req.amountPaid ?? req.fee ?? 0), req.userId || req.retailerId || 'retailer-1', `Refund: ${req.serviceName || req.title || 'Service'}`, String(req.id)); req.refundProcessed=true; }
       req.status='Rejected';
     } else { req.status='Approved'; }
     req.adminRemark=remark; if(slipData){req.adminSlipData=slipData; req.adminSlipName=slipFile?.name; req.adminSlipMime=slipFile?.type;} req.updatedAt=new Date().toISOString();
