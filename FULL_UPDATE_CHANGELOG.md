@@ -1,0 +1,23 @@
+# Full requested update
+
+- Retailer/distributor/super/master role hierarchy is preserved.
+- New accounts start wallet at zero.
+- Wallet recharge supports Razorpay Live Checkout from the user dashboard.
+- Server verifies Razorpay signature before crediting wallet.
+- Razorpay webhook endpoint is included for payment.captured reconciliation.
+- Service charge is read from Admin service pricing override (`master_service_prices`) when configured; otherwise the catalog default is used.
+- Service request deducts the exact configured charge from the requesting user's wallet.
+- That charge is credited to the admin wallet ledger.
+- Admin reject/refund returns the exact deducted amount to the original user and debits the admin wallet.
+- Admin can upload a slip/document on service completion; it is saved with the request and user service history has View/Download.
+- Existing menus/pages are retained; changes are additive.
+- `RAZORPAY_LIVE_SETUP.md` contains environment/webhook deployment steps.
+- User registration now stores actual applicant name, mobile, Gmail/email, role, UTR and creation fee with wallet balance starting at ₹0.
+- New user accounts are DEACTIVE/PENDING until an admin verifies payment and activates the account.
+- Login blocks all Pending/Rejected users with a clear verification message.
+- Admin User Management shows Name, Role, Mobile, Gmail, UTR, Payment Status, Wallet and Account Status with Verify & Activate/Reject actions.
+- Admin notifications are generated for new ID creation requests.
+- Dashboard Create Partner ID creates a real per-user pending account instead of only a browser-side request.
+- Added backend Prisma approval fields and admin verification API endpoints.
+- Removed fixed demo wallet/name fallbacks so wallet balances remain user-specific and default to ₹0.
+- Sidebar service links remain mapped to the existing service pages and services are treated active unless explicitly disabled.
