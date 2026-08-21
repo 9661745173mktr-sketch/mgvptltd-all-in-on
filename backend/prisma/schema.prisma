@@ -10,12 +10,17 @@ generator client {
 model User {
   id            String           @id @default(uuid())
   name          String?
+  username      String?          @unique
   email         String           @unique
   phone         String?          @unique
   password      String
   role          String           @default("RETAILER")
-  parentId      String?         
+  parentId      String?
   walletBalance Float            @default(0.00)
+  accountStatus String           @default("Pending")
+  paymentStatus String           @default("Pending")
+  approvedAt    DateTime?
+  approvedBy    String?
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @default(now()) @updatedAt
   requests      ServiceRequest[]
@@ -37,7 +42,7 @@ model ServiceCategory {
   id        String        @id @default(uuid())
   name      String        @unique
   slug      String        @unique
-  type      String        
+  type      String
   icon      String?
   status    Boolean       @default(true)
   createdAt DateTime      @default(now())
@@ -56,7 +61,6 @@ model ServiceItem {
   status      Boolean          @default(true)
   createdAt   DateTime         @default(now())
   requests    ServiceRequest[]
-
   @@index([categoryId])
 }
 
@@ -78,7 +82,6 @@ model ServiceRequest {
   adminId String?
   admin User? @relation("AdminServiceRequests", fields: [adminId], references: [id], onDelete: SetNull)
   createdAt   DateTime    @default(now())
-
   @@index([userId])
   @@index([serviceId])
 }
@@ -87,17 +90,16 @@ model Product {
   id          String    @id @default(uuid())
   vendorId    String
   vendor      User?     @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  title       String?  
-  name        String?  
-  description String?  
-  imageUrl    String?  
-  category    String?  
-  categoryId  String?  
+  title       String?
+  name        String?
+  description String?
+  imageUrl    String?
+  category    String?
+  categoryId  String?
   categoryRef Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  price       Float?   
+  price       Float?
   stock       Int       @default(0)
   createdAt   DateTime  @default(now())
-
   @@index([vendorId])
   @@index([categoryId])
 }
@@ -109,7 +111,6 @@ model Order {
   totalAmount Float
   status      String   @default("PLACED")
   createdAt   DateTime @default(now())
-
   @@index([buyerId])
 }
 
@@ -128,12 +129,10 @@ model IdCreationRequest {
   status          String   @default("PENDING")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
-
   @@index([creatorId])
   @@index([requestedRole])
   @@index([status])
 }
-
 
 model WalletTransaction {
   id String @id @default(uuid())
