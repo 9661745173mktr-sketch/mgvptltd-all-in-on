@@ -1,9 +1,17 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { randomBytes, scryptSync } from 'node:crypto';
 import { requireAdmin } from './adminAuth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
+const ROLES = ['MASTER_DISTRIBUTOR', 'SUPER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'];
+
+function hashPassword(password: string) {
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(password, salt, 64).toString('hex');
+  return `scrypt$${salt}$${hash}`;
+}
 
 router.use(requireAdmin);
 
@@ -37,6 +45,42 @@ router.get('/users', async (_req, res) => {
   }
 });
 
+router.post('/users', async (req, res) => {
+  try {
+    const name = String(req.body?.name || '').trim();
+    const phone = String(req.body?.phone || '').replace(/\D/g, '');
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const username = String(req.body?.username || '').trim() || null;
+    const role = String(req.body?.role || 'RETAILER').toUpperCase().replace(/[\s-]+/g, '_');
+    const walletBalance = Number(req.body?.walletBalance || 0);
+    if (!name || phone.length !== 10 || !email || password.length < 6) return res.status(400).json({ error: 'Real name, valid 10-digit mobile, email and password (6+ characters) are required.' });
+    if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid partner role.' });
+    if (!Number.isFinite(walletBalance) || walletBalance < 0) return res.status(400).json({ error: 'Invalid wallet balance.' });
+    const existing = await prisma.user.findFirst({ where: { OR: [{ email }, { phone }, ...(username ? [{ username }] : [])] } });
+    if (existing) return res.status(409).json({ error: 'This mobile, email or username is already registered.' });
+    const user = await prisma.user.create({
+      data: {
+        name,
+        phone,
+        email,
+        username,
+        password: hashPassword(password),
+        role,
+        walletBalance,
+        accountStatus: 'Active',
+        paymentStatus: 'Verified',
+        approvedAt: new Date(),
+        approvedBy: 'ADMIN',
+      },
+    });
+    const { password: _password, ...safe } = user;
+    res.status(201).json({ success: true, message: 'User created and activated.', user: safe });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.post('/users/:id/verify-activate', async (req, res) => {
   try {
     const user = await prisma.user.update({
@@ -63,6 +107,15 @@ router.post('/users/:id/reject', async (req, res) => {
     });
     const { password, ...safe } = user;
     res.json({ message: 'Account request rejected.', user: safe });
+  } catch (e: any) {
+    res.status(404).json({ error: 'User not found' });
+  }
+});
+
+router.delete('/users/:id', async (req, res) => {
+  try {
+    await prisma.user.delete({ where: { id: String(req.params.id) } });
+    res.json({ success: true, message: 'User deleted.' });
   } catch (e: any) {
     res.status(404).json({ error: 'User not found' });
   }
@@ -106,14 +159,9 @@ router.post('/service-requests/:id/reject', async (req, res) => {
       if (request.status !== 'PENDING') throw new Error(`Request is already ${request.status}`);
       if (!request.refundProcessed && request.amountPaid > 0) {
         await tx.user.update({ where: { id: request.userId }, data: { walletBalance: { increment: request.amountPaid } } });
-        await tx.walletTransaction.create({
-          data: { userId: request.userId, type: 'SERVICE_REFUND', amount: request.amountPaid, reference: request.id, description: 'Refund for rejected service request', status: 'SUCCESS' },
-        });
+        await tx.walletTransaction.create({ data: { userId: request.userId, type: 'SERVICE_REFUND', amount: request.amountPaid, reference: request.id, description: 'Refund for rejected service request', status: 'SUCCESS' } });
       }
-      return tx.serviceRequest.update({
-        where: { id: request.id },
-        data: { status: 'REJECTED', refundProcessed: true, adminRemark: req.body?.remark ? String(req.body.remark) : null },
-      });
+      return tx.serviceRequest.update({ where: { id: request.id }, data: { status: 'REJECTED', refundProcessed: true, adminRemark: req.body?.remark ? String(req.body.remark) : null } });
     });
     res.json({ success: true, message: 'Request rejected and wallet refunded.', request: updated });
   } catch (e: any) {
@@ -128,9 +176,7 @@ router.post('/wallet/recharge-request', async (req, res) => {
     if (!userId || !Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'Valid userId and amount are required' });
     const user = await prisma.user.findUnique({ where: { id: String(userId) } });
     if (!user) return res.status(404).json({ error: 'User not found' });
-    const tx = await prisma.walletTransaction.create({
-      data: { userId: user.id, type: 'RECHARGE_REQUEST', amount: n, reference: String(reference || utr || ''), description: utr ? `Manual recharge UTR: ${utr}` : 'Manual wallet recharge request', status: 'PENDING' },
-    });
+    const tx = await prisma.walletTransaction.create({ data: { userId: user.id, type: 'RECHARGE_REQUEST', amount: n, reference: String(reference || utr || ''), description: utr ? `Manual recharge UTR: ${utr}` : 'Manual wallet recharge request', status: 'PENDING' } });
     res.json({ success: true, message: 'Recharge request sent to admin.', transaction: tx });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
