@@ -1,9 +1,28 @@
 'use client';
 
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+function normalizeBase(raw: string) {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+// Support both variable names used by earlier deployments. If the value is
+// missing/invalid, fall back to same-origin /api instead of passing a malformed
+// URL to fetch(), which caused Safari's "The string did not match the expected
+// pattern" error on login and ID creation.
+export const API_BASE_URL = normalizeBase(
+  process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || ''
+);
 
 export function apiUrl(path: string) {
-  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${cleanPath}`;
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
