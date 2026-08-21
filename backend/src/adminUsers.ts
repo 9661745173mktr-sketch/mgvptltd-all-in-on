@@ -1,6 +1,153 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-const router=Router(); const prisma=new PrismaClient();
-router.get('/users', async (_req,res)=>{ try { const users=await prisma.user.findMany({orderBy:{createdAt:'desc'}}); res.json({users:users.map(({password,...u})=>u)}); } catch(e:any){res.status(500).json({error:e.message})} });
-router.post('/users/:id/verify-activate', async (req,res)=>{ try { const user=await prisma.user.update({where:{id:String(req.params.id)},data:{paymentStatus:'Verified',accountStatus:'Active',approvedAt:new Date(),approvedBy:String(req.body?.adminId||'ADMIN')}}); const {password,...safe}=user; res.json({message:'Payment verified and account activated.',user:safe}); } catch(e:any){res.status(404).json({error:'User not found'})} });
+
+const router = Router();
+const prisma = new PrismaClient();
+
+router.get('/users', async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+    res.json({ users: users.map(({ password, ...u }) => u) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/users/:id/verify-activate', async (req, res) => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: String(req.params.id) },
+      data: {
+        paymentStatus: 'Verified',
+        accountStatus: 'Active',
+        approvedAt: new Date(),
+        approvedBy: String(req.body?.adminId || 'ADMIN'),
+      },
+    });
+    const { password, ...safe } = user;
+    res.json({ message: 'Payment verified and account activated.', user: safe });
+  } catch (e: any) {
+    res.status(404).json({ error: 'User not found' });
+  }
+});
+
+router.post('/users/:id/reject', async (req, res) => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: String(req.params.id) },
+      data: { accountStatus: 'Rejected', paymentStatus: 'Rejected' },
+    });
+    const { password, ...safe } = user;
+    res.json({ message: 'Account request rejected.', user: safe });
+  } catch (e: any) {
+    res.status(404).json({ error: 'User not found' });
+  }
+});
+
+router.get('/service-requests', async (req, res) => {
+  try {
+    const status = req.query.status ? String(req.query.status).toUpperCase() : undefined;
+    const requests = await prisma.serviceRequest.findMany({
+      where: status ? { status } : undefined,
+      include: { user: true, service: { include: { category: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ requests: requests.map(r => ({ ...r, user: { ...r.user, password: undefined } })) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/service-requests/:id/approve', async (req, res) => {
+  try {
+    const request = await prisma.serviceRequest.findUnique({ where: { id: String(req.params.id) } });
+    if (!request) return res.status(404).json({ error: 'Service request not found' });
+    if (request.status !== 'PENDING') return res.status(400).json({ error: `Request is already ${request.status}` });
+    const updated = await prisma.serviceRequest.update({
+      where: { id: request.id },
+      data: { status: 'APPROVED', adminRemark: req.body?.remark ? String(req.body.remark) : null, adminId: req.body?.adminId ? String(req.body.adminId) : null },
+      include: { service: true },
+    });
+    res.json({ success: true, message: 'Service request approved.', request: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/service-requests/:id/reject', async (req, res) => {
+  try {
+    const updated = await prisma.$transaction(async tx => {
+      const request = await tx.serviceRequest.findUnique({ where: { id: String(req.params.id) } });
+      if (!request) throw new Error('Service request not found');
+      if (request.status !== 'PENDING') throw new Error(`Request is already ${request.status}`);
+      if (!request.refundProcessed && request.amountPaid > 0) {
+        await tx.user.update({ where: { id: request.userId }, data: { walletBalance: { increment: request.amountPaid } } });
+        await tx.walletTransaction.create({
+          data: { userId: request.userId, type: 'SERVICE_REFUND', amount: request.amountPaid, reference: request.id, description: 'Refund for rejected service request', status: 'SUCCESS' },
+        });
+      }
+      return tx.serviceRequest.update({
+        where: { id: request.id },
+        data: { status: 'REJECTED', refundProcessed: true, adminRemark: req.body?.remark ? String(req.body.remark) : null, adminId: req.body?.adminId ? String(req.body.adminId) : null },
+      });
+    });
+    res.json({ success: true, message: 'Request rejected and wallet refunded.', request: updated });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/wallet/recharge-request', async (req, res) => {
+  try {
+    const { userId, amount, utr, reference } = req.body || {};
+    const n = Number(amount);
+    if (!userId || !Number.isFinite(n) || n <= 0) return res.status(400).json({ error: 'Valid userId and amount are required' });
+    const user = await prisma.user.findUnique({ where: { id: String(userId) } });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const tx = await prisma.walletTransaction.create({
+      data: { userId: user.id, type: 'RECHARGE_REQUEST', amount: n, reference: String(reference || utr || ''), description: utr ? `Manual recharge UTR: ${utr}` : 'Manual wallet recharge request', status: 'PENDING' },
+    });
+    res.json({ success: true, message: 'Recharge request sent to admin.', transaction: tx });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.get('/wallet/recharge-requests', async (_req, res) => {
+  try {
+    const transactions = await prisma.walletTransaction.findMany({ where: { type: 'RECHARGE_REQUEST' }, include: { user: true }, orderBy: { createdAt: 'desc' } });
+    res.json({ transactions: transactions.map(t => ({ ...t, user: { ...t.user, password: undefined } })) });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+router.post('/wallet/recharge-requests/:id/approve', async (req, res) => {
+  try {
+    const result = await prisma.$transaction(async tx => {
+      const request = await tx.walletTransaction.findUnique({ where: { id: String(req.params.id) } });
+      if (!request || request.type !== 'RECHARGE_REQUEST') throw new Error('Recharge request not found');
+      if (request.status !== 'PENDING') throw new Error(`Recharge is already ${request.status}`);
+      const user = await tx.user.update({ where: { id: request.userId }, data: { walletBalance: { increment: request.amount } } });
+      const approved = await tx.walletTransaction.update({ where: { id: request.id }, data: { status: 'APPROVED', description: `Wallet recharge approved by ${String(req.body?.adminId || 'ADMIN')}` } });
+      return { approved, balance: user.walletBalance };
+    });
+    res.json({ success: true, message: 'Recharge approved and wallet credited.', ...result });
+  } catch (e: any) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+router.post('/wallet/recharge-requests/:id/reject', async (req, res) => {
+  try {
+    const request = await prisma.walletTransaction.findUnique({ where: { id: String(req.params.id) } });
+    if (!request || request.type !== 'RECHARGE_REQUEST') return res.status(404).json({ error: 'Recharge request not found' });
+    if (request.status !== 'PENDING') return res.status(400).json({ error: `Recharge is already ${request.status}` });
+    const updated = await prisma.walletTransaction.update({ where: { id: request.id }, data: { status: 'REJECTED', description: String(req.body?.remark || 'Recharge rejected by admin') } });
+    res.json({ success: true, message: 'Recharge request rejected.', transaction: updated });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 export default router;
