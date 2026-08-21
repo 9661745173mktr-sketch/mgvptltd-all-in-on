@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
+import { refundService } from '../../../app/utils/walletStore';
 
 export default function AdminServiceRequestsPage() {
   const [requests, setRequests] = useState<any[]>([]);
@@ -50,18 +51,15 @@ export default function AdminServiceRequestsPage() {
   }, []);
 
   const handleAction = (id: number, newStatus: string) => {
-    const updated = requests.map(item => item.id === id ? { ...item, status: newStatus } : item);
-    
-    // यूनिक डेटा फिर से सुनिश्चित करें
+    const updated = requests.map(item => {
+      if(item.id !== id) return item;
+      if(newStatus === 'Rejected' && !item.refundProcessed){ refundService(Number(item.amountPaid ?? item.fee ?? 0), item.userId || item.retailerId || '', `Refund: ${item.serviceName || item.title || 'Service'}`, String(item.id)); return {...item,status:newStatus,refundProcessed:true}; }
+      return {...item,status:newStatus};
+    });
     const uniqueUpdated = updated.filter((v, i, a) => v && v.id && i === a.findIndex(t => t && t.id === v.id));
-
-    setRequests(uniqueUpdated);
-    localStorage.setItem('service_requests_db', JSON.stringify(uniqueUpdated));
-    localStorage.setItem('aadhaar_correction_db', JSON.stringify(uniqueUpdated));
-    
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new Event('service_updated'));
-    alert(`Service request status updated to ${newStatus}!`);
+    setRequests(uniqueUpdated); localStorage.setItem('service_requests_db', JSON.stringify(uniqueUpdated)); localStorage.setItem('aadhaar_correction_db', JSON.stringify(uniqueUpdated.filter((x:any)=>x.category==='Aadhaar Correction')));
+    window.dispatchEvent(new Event('storage')); window.dispatchEvent(new Event('service_updated')); window.dispatchEvent(new Event('wallet_updated'));
+    alert(newStatus==='Rejected' ? 'Request rejected और refund wallet में add कर दिया गया।' : `Service request ${newStatus}!`);
   };
 
   const pendingCount = requests.filter(r => r && (r.status === 'Pending' || !r.status)).length;
@@ -107,14 +105,11 @@ export default function AdminServiceRequestsPage() {
                     {req.status || 'Pending'}
                   </span>
                   
-                  {req.status !== 'Approved' && (
-                    <button 
-                      onClick={() => handleAction(req.id, 'Approved')}
-                      style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      Approve ✅
-                    </button>
-                  )}
+                  {req.adminSlipData && <a href={req.adminSlipData} download={req.adminSlipName || 'service-slip.pdf'} target="_blank" rel="noreferrer" style={{background:'#0891b2',color:'#fff',padding:'8px 12px',borderRadius:'8px',fontSize:'12px',fontWeight:'bold',textDecoration:'none'}}>📄 Slip</a>}
+                  {req.status !== 'Approved' && req.status !== 'Rejected' && (<>
+                    <button onClick={() => handleAction(req.id, 'Approved')} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Approve ✅</button>
+                    <button onClick={() => handleAction(req.id, 'Rejected')} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Reject + Refund ↩️</button>
+                  </>)}
                 </div>
               </div>
             ))}

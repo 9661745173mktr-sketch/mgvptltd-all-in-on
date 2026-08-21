@@ -14,8 +14,8 @@ interface EnterpriseLayoutProps {
 export default function EnterpriseLayout({
   children,
   userRole = 'ADMIN',
-  userEmail = 'admin@enterprise.com',
-  walletBalance = 54200.00
+  userEmail = '',
+  walletBalance = 0
 }: EnterpriseLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,7 +31,7 @@ export default function EnterpriseLayout({
     { name: 'E-Commerce & Retail', href: '/dashboard/ecommerce', icon: '🛒', category: 'Marketplace' },
     { name: 'Affiliate & Reseller Hub', href: '/dashboard/affiliate', icon: '🤝', category: 'Earnings' },
     { name: 'Digital Services & SaaS', href: '/dashboard/digital', icon: '💻', category: 'Tech' },
-    { name: 'Print Portal & Packaging', href: '/dashboard/print', icon: '🖨️', category: 'Print' },
+    { name: 'Print Portal & Packaging', href: '/dashboard/print-portal', icon: '🖨️', category: 'Print' },
     { name: 'Travel & Bookings', href: '/dashboard/travel', icon: '✈️', category: 'Booking' },
     { name: 'Education & Library', href: '/dashboard/education', icon: '📚', category: 'Learning' },
     { name: 'API Management Panel', href: '/dashboard/admin/apis', icon: '🔌', category: 'Admin Only' },

@@ -1,0 +1,4 @@
+ALTER TABLE "User" ADD COLUMN "accountStatus" TEXT NOT NULL DEFAULT 'Pending';
+ALTER TABLE "User" ADD COLUMN "paymentStatus" TEXT NOT NULL DEFAULT 'Pending';
+ALTER TABLE "User" ADD COLUMN "approvedAt" DATETIME;
+ALTER TABLE "User" ADD COLUMN "approvedBy" TEXT;

@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { readUsers, saveUsers, addAdminNotification, type PortalUser } from '../app/utils/authStore';
+import { createRazorpayQr, openRazorpayIdCheckout } from '../app/utils/razorpay';
 
 /* =========================================================
    COMPANY PAYMENT DETAILS
@@ -344,8 +346,9 @@ export default function CreateIdPanel() {
      PAYMENT
   ======================================================= */
 
-  const [utr, setUtr] =
-    useState('');
+  const [utr, setUtr] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay'|'razorpay_qr'|'upi'>('razorpay');
+  const [razorpayQr, setRazorpayQr] = useState<any>(null);
 
   const [submitting, setSubmitting] =
     useState(false);
@@ -568,16 +571,7 @@ export default function CreateIdPanel() {
       return false;
     }
 
-    if (
-      utr.trim().length <
-      6
-    ) {
-      alert(
-        'Payment करने के बाद सही UTR / Transaction Reference डालें।'
-      );
-
-      return false;
-    }
+    if (paymentMethod === 'upi' && utr.trim().length < 6) { alert('UPI payment के बाद सही UTR / Transaction Reference डालें।'); return false; }
 
     return true;
   };
@@ -591,178 +585,21 @@ export default function CreateIdPanel() {
      Admin verification के बाद ID activate करनी चाहिए।
   ======================================================= */
 
-  const submitRequest = (
-    e: React.FormEvent
-  ) => {
-    e.preventDefault();
-
-    if (!validateForm()) {
-      return;
-    }
-
-    if (!selectedRoleConfig) {
-      return;
-    }
-
-    setSubmitting(true);
-
+  const submitRequest = async (e: React.FormEvent) => {
+    e.preventDefault(); if(!validateForm() || !selectedRoleConfig) return; setSubmitting(true);
     try {
-      const creatorId =
-        currentUser?.id ||
-        currentUser?.userId ||
-        currentUser?.retailerId ||
-        currentUser?.phone ||
-        localStorage.getItem(
-          'retailer_id'
-        ) ||
-        'unknown';
-
-      const creatorName =
-        currentUser?.name ||
-        currentUser?.fullName ||
-        'Unknown User';
-
-      const creatorMobile =
-        currentUser?.phone ||
-        currentUser?.mobile ||
-        '';
-
-      const request: IdCreationRequest =
-        {
-          id: `IDREQ-${Date.now()}`,
-
-          creatorId:
-            String(creatorId),
-
-          creatorName:
-            String(creatorName),
-
-          creatorMobile:
-            String(creatorMobile),
-
-          creatorRole:
-            currentRole,
-
-          requestedRole:
-            selectedRoleConfig.key,
-
-          requestedRoleLabel:
-            selectedRoleConfig.label,
-
-          amount:
-            selectedRoleConfig.fee,
-
-          applicantName:
-            applicantName.trim(),
-
-          applicantMobile:
-            applicantMobile.trim(),
-
-          applicantEmail:
-            applicantEmail.trim(),
-
-          username:
-            username.trim(),
-
-          password:
-            password,
-
-          utr:
-            utr.trim(),
-
-          paymentStatus:
-            'Pending',
-
-          status:
-            'Pending',
-
-          createdAt:
-            new Date().toISOString(),
-        };
-
-      /* ===============================================
-         SAVE REQUEST
-      =============================================== */
-
-      const oldRaw =
-        localStorage.getItem(
-          ID_CREATION_DB_KEY
-        );
-
-      let oldRequests:
-        IdCreationRequest[] = [];
-
-      try {
-        const parsed =
-          JSON.parse(
-            oldRaw || '[]'
-          );
-
-        if (
-          Array.isArray(parsed)
-        ) {
-          oldRequests =
-            parsed;
-        }
-      } catch {
-        oldRequests = [];
-      }
-
-      localStorage.setItem(
-        ID_CREATION_DB_KEY,
-        JSON.stringify([
-          request,
-          ...oldRequests,
-        ])
-      );
-
-      /* ===============================================
-         ADMIN UPDATE EVENT
-      =============================================== */
-
-      window.dispatchEvent(
-        new Event(
-          'id_creation_updated'
-        )
-      );
-
-      /* ===============================================
-         SUCCESS
-      =============================================== */
-
-      setSuccessMessage(
-        `₹${selectedRoleConfig.fee.toLocaleString(
-          'en-IN'
-        )} का ${selectedRoleConfig.label} creation request successfully submit हो गया है। Admin verification के बाद ID activate होगी।`
-      );
-
-      alert(
-        'ID Creation Request Successfully Submitted! Admin verification के बाद ID activate होगी.'
-      );
-
-      /* ===============================================
-         RESET PAYMENT
-      =============================================== */
-
-      setSelectedRole('');
-
-      setUtr('');
-
-      setUsername('');
-
-      setPassword('');
-    } catch (error) {
-      console.error(
-        'ID creation request error:',
-        error
-      );
-
-      alert(
-        'Request submit नहीं हुई। कृपया दोबारा प्रयास करें।'
-      );
-    } finally {
-      setSubmitting(false);
-    }
+      const creatorId=currentUser?.id||currentUser?.userId||currentUser?.retailerId||currentUser?.phone||localStorage.getItem('retailer_id')||'unknown'; const creatorName=currentUser?.name||currentUser?.fullName||'Unknown User'; const creatorMobile=currentUser?.phone||currentUser?.mobile||'';
+      const users=readUsers(); const duplicate=users.some(u=>String(u.email||'').toLowerCase()===applicantEmail.trim().toLowerCase()||String(u.phone||'')===applicantMobile.trim()||String(u.id||'').toLowerCase()===username.trim().toLowerCase()); if(duplicate){alert('इस Mobile/Email/ID से user पहले से मौजूद है।');return;}
+      const newUser:PortalUser={id:username.trim(),name:applicantName.trim(),phone:applicantMobile.trim(),email:applicantEmail.trim(),password,role:selectedRoleConfig.key,walletBalance:0,accountStatus:'Pending',paymentStatus:paymentMethod==='upi'?'Pending':'Payment Pending',creationFee:selectedRoleConfig.fee,utr:utr.trim(),createdAt:new Date().toISOString()};
+      const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:5000';
+      const rr=await fetch(`${apiBase}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:newUser.id,email:newUser.email,password:newUser.password,role:newUser.role,name:newUser.name,phone:newUser.phone,parentId:creatorId})});
+      const rd=await rr.json(); if(!rr.ok) throw new Error(rd.error||'Server registration failed');
+      saveUsers([newUser,...users]);
+      const old=(()=>{try{const x=JSON.parse(localStorage.getItem(ID_CREATION_DB_KEY)||'[]');return Array.isArray(x)?x:[]}catch{return[];}})(); const request:any={id:`IDREQ-${Date.now()}`,userId:newUser.id,creatorId:String(creatorId),creatorName:String(creatorName),creatorMobile:String(creatorMobile),creatorRole:currentRole,requestedRole:selectedRoleConfig.key,requestedRoleLabel:selectedRoleConfig.label,amount:selectedRoleConfig.fee,applicantName:newUser.name,applicantMobile:newUser.phone,applicantEmail:newUser.email,username:newUser.id,password:newUser.password,utr:newUser.utr,paymentMethod,paymentStatus:paymentMethod==='upi'?'Pending':'Payment Pending',status:'Pending',createdAt:new Date().toISOString(),walletBalance:0}; localStorage.setItem(ID_CREATION_DB_KEY,JSON.stringify([request,...old]));
+      addAdminNotification({type:'ID_CREATION',title:'New User ID Created',message:`${newUser.name} ne ${selectedRoleConfig.label} ID create ki hai. ${paymentMethod==='upi'?'UTR':'Razorpay payment'} verify karke ID ACTIVE karein.`,userId:newUser.id,applicantName:newUser.name,mobile:newUser.phone,email:newUser.email,utr:newUser.utr,status:'Unread'}); window.dispatchEvent(new Event('id_creation_updated'));
+      if(paymentMethod==='razorpay'){await openRazorpayIdCheckout({amount:selectedRoleConfig.fee,userId:newUser.id,name:newUser.name,phone:newUser.phone,email:newUser.email,apiBase,onSuccess:(data)=>{saveUsers(readUsers().map(u=>u.id===newUser.id?{...u,paymentStatus:'Paid',utr:data?.paymentId||u.utr}:u));alert('Razorpay payment successful. ID अभी Pending है; Admin verify करके ACTIVE करेगा.');}});} else if(paymentMethod==='razorpay_qr'){const qr=await createRazorpayQr({amount:selectedRoleConfig.fee,userId:newUser.id,purpose:'ID_CREATION',apiBase,description:`${selectedRoleConfig.label} ID creation - ${newUser.name}`});setRazorpayQr(qr);alert('Razorpay QR generate हो गया है. QR scan करके payment करें.');} else {setSuccessMessage(`₹${selectedRoleConfig.fee.toLocaleString('en-IN')} का request submit हो गया है। Admin UTR verify करके ID activate करेगा.`);}
+      if(paymentMethod!=='razorpay_qr'){setSelectedRole('');setUtr('');setUsername('');setPassword('');}
+    }catch(error:any){console.error(error);alert(error?.message||'Request/payment process complete नहीं हुआ.');}finally{setSubmitting(false);}
   };
 
   /* =======================================================
@@ -1249,9 +1086,17 @@ export default function CreateIdPanel() {
 
           </div>
 
+          {/* PAYMENT METHOD */}
+          <div className="mt-5">
+            <label className="mb-2 block text-xs font-black text-cyan-300">Payment Method *</label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {([['razorpay','💳 Razorpay Checkout'],['razorpay_qr','▦ Razorpay QR'],['upi','📱 UPI + UTR']] as const).map(([v,l])=><button key={v} type="button" onClick={()=>{setPaymentMethod(v);setRazorpayQr(null);}} className={`rounded-xl border px-3 py-3 text-xs font-black ${paymentMethod===v?'border-cyan-400 bg-cyan-400/10 text-cyan-300':'border-slate-700 bg-slate-800 text-slate-400'}`}>{l}</button>)}
+            </div>
+          </div>
+
           {/* UTR */}
 
-          <div className="mt-4">
+          {paymentMethod === 'upi' && <div className="mt-4">
 
             <label className="mb-2 block text-xs font-black text-cyan-300">
               UTR / Transaction Reference *
@@ -1271,12 +1116,9 @@ export default function CreateIdPanel() {
               className="w-full rounded-xl border border-emerald-400/20 bg-slate-800 px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400"
             />
 
-            <p className="mt-2 text-[10px] leading-5 text-slate-500">
-              पहले QR से payment करें, फिर
-              transaction का UTR यहाँ डालें।
-            </p>
-
-          </div>
+            <p className="mt-2 text-[10px] leading-5 text-slate-500">पहले UPI QR से payment करें, फिर transaction का UTR यहाँ डालें।</p>
+          </div>}
+          {paymentMethod !== 'upi' && <p className="mt-3 text-[10px] leading-5 text-slate-500">Razorpay payment के बाद भी ID automatically active नहीं होगी; Admin verification जरूरी है।</p>}
 
           {/* SUBMIT */}
 
@@ -1356,6 +1198,8 @@ export default function CreateIdPanel() {
             </div>
 
           </div>
+
+          {paymentMethod === 'razorpay_qr' && razorpayQr && <div className="mt-5 rounded-2xl bg-white p-4 text-center"><QRCodeSVG value={razorpayQr.imageContent} size={240} includeMargin/><div className="text-xs font-black text-slate-900">Razorpay QR • ₹{paymentAmount.toLocaleString('en-IN')}</div></div>}
 
           {/* AMOUNT */}
 

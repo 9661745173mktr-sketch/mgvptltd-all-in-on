@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
+import { addAdminNotification, findUser, readUsers, saveUsers, setCurrentUser, type PortalUser } from '../../utils/authStore';
+import { createRazorpayQr, openRazorpayIdCheckout } from '../../utils/razorpay';
 
 type UserRole = 'master_distributor' | 'super_distributor' | 'distributor' | 'retailer';
 
@@ -50,6 +52,8 @@ export default function AuthPortalPage() {
   const [signupPassword, setSignupPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('retailer');
   const [utr, setUtr] = useState('');
+  const [signupPaymentMethod, setSignupPaymentMethod] = useState<'razorpay'|'razorpay_qr'|'upi'>('razorpay');
+  const [signupQr, setSignupQr] = useState<any>(null);
 
   const currentFee = ROLE_FEES[selectedRole];
   const upiPayload = `upi://pay?pa=${encodeURIComponent(COMPANY_UPI_ID)}&pn=${encodeURIComponent(COMPANY_NAME)}&am=${currentFee.toFixed(2)}&cu=INR`;
@@ -57,70 +61,48 @@ export default function AuthPortalPage() {
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!identifier || !password) {
-      alert('कृपया मोबाइल नंबर और पासवर्ड दर्ज करें।');
+      alert('कृपया मोबाइल नंबर/ईमेल और पासवर्ड दर्ज करें।');
       return;
     }
 
-    localStorage.setItem('retailer_logged_in', 'true');
-    localStorage.setItem('user_role_type', 'master_distributor');
-    window.dispatchEvent(new Event('storage'));
+    const user = findUser(identifier, password);
+    if (!user) {
+      alert('Invalid credentials. कृपया सही Email/Mobile और Password डालें।');
+      return;
+    }
 
-    alert('लॉगिन सफल रहा! 🚀');
+    if (String(user.accountStatus).toLowerCase() !== 'active' || String(user.paymentStatus).toLowerCase() !== 'verified') {
+      alert('आपकी ID अभी DEACTIVE / PENDING VERIFICATION है। Admin payment verify करके ID ACTIVE करेगा, उसके बाद ही login होगा।');
+      return;
+    }
+
+    setCurrentUser(user);
+    window.dispatchEvent(new Event('storage'));
+    alert(`Welcome ${user.name}! Login सफल रहा। 🚀`);
     router.push('/dashboard');
   };
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone || !signupPassword || !utr) {
-      alert('कृपया सभी आवश्यक विवरण और UTR नंबर भरें।');
-      return;
-    }
-
-    const newUser = {
-      id: `${selectedRole}-${Date.now()}`,
-      name: name.trim(),
-      phone: phone.trim(),
-      email: email.trim(),
-      password: signupPassword,
-      role: selectedRole,
-      walletBalance: 0,
-      accountStatus: 'Pending',
-      paymentStatus: 'Pending',
-      creationFee: currentFee,
-      createdAt: new Date().toISOString()
-    };
-
-    try {
-      const existingUsers = JSON.parse(localStorage.getItem('appUsers') || '[]');
-      localStorage.setItem('appUsers', JSON.stringify([newUser, ...existingUsers]));
-
-      const requestObj = {
-        id: `REQ-${Date.now()}`,
-        applicantName: name.trim(),
-        applicantPhone: phone.trim(),
-        role: selectedRole,
-        amount: currentFee,
-        utr: utr.trim(),
-        paymentStatus: 'Pending Verification',
-        accountStatus: 'Pending',
-        date: new Date().toLocaleDateString('en-IN'),
-        timestamp: new Date().toISOString()
-      };
-
-      const existingReqs = JSON.parse(localStorage.getItem('id_creation_requests_db') || '[]');
-      localStorage.setItem('id_creation_requests_db', JSON.stringify([requestObj, ...existingReqs]));
-
-      alert(`🎉 ${ROLE_LABELS[selectedRole]} ID registration request submitted successfully! Admin verification के बाद आपकी आईडी एक्टिव कर दी जाएगी।`);
-      setAuthMode('login');
-      setName('');
-      setPhone('');
-      setEmail('');
-      setSignupPassword('');
-      setUtr('');
-    } catch (err) {
-      console.error(err);
-      alert('त्रुटि हुई।');
-    }
+    if (!name.trim() || !phone.trim() || !email.trim() || !signupPassword) { alert('कृपया Name, Mobile, Gmail/Email और Password सभी भरें।'); return; }
+    if (!/^\d{10}$/.test(phone.trim())) { alert('कृपया 10 digit mobile number दर्ज करें।'); return; }
+    if (signupPaymentMethod==='upi' && !utr.trim()) { alert('UPI payment के बाद UTR दर्ज करें।'); return; }
+    const users=readUsers(); if(users.some(u=>String(u.email).toLowerCase()===email.trim().toLowerCase()||String(u.phone)===phone.trim())){alert('इस Mobile या Email से पहले से ID मौजूद है।');return;}
+    const now=new Date().toISOString(); const user:PortalUser={id:`${selectedRole}-${Date.now()}`,name:name.trim(),phone:phone.trim(),email:email.trim(),password:signupPassword,role:selectedRole,walletBalance:0,accountStatus:'Pending',paymentStatus:signupPaymentMethod==='upi'?'Pending':'Payment Pending',creationFee:currentFee,utr:utr.trim(),createdAt:now};
+    try{
+      const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:5000';
+      const rr=await fetch(`${apiBase}/api/auth/register`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:user.id,email:user.email,password:user.password,role:user.role,name:user.name,phone:user.phone})});
+      const rd=await rr.json(); if(!rr.ok) throw new Error(rd.error||'Server registration failed');
+      saveUsers([user,...users]);
+      const existingReqs=(()=>{try{const x=JSON.parse(localStorage.getItem('id_creation_requests_db')||'[]');return Array.isArray(x)?x:[]}catch{return[];}})();
+      const requestObj:any={id:`REQ-${Date.now()}`,userId:user.id,applicantName:user.name,applicantPhone:user.phone,applicantEmail:user.email,role:selectedRole,amount:currentFee,utr:user.utr,paymentMethod:signupPaymentMethod,paymentStatus:signupPaymentMethod==='upi'?'Pending Verification':'Payment Pending',accountStatus:'Pending',status:'Pending',walletBalance:0,date:new Date().toLocaleDateString('en-IN'),timestamp:now};
+      localStorage.setItem('id_creation_requests_db',JSON.stringify([requestObj,...existingReqs]));
+      addAdminNotification({type:'ID_CREATION',title:'New User ID Created',message:`${user.name} ने ${ROLE_LABELS[selectedRole]} ID create की है। ${signupPaymentMethod==='upi'?'UTR verify':'Razorpay payment verify'} करके ID ACTIVE करें।`,userId:user.id,applicantName:user.name,mobile:user.phone,email:user.email,utr:user.utr,status:'Unread'}); window.dispatchEvent(new Event('id_creation_updated'));
+      if(signupPaymentMethod==='razorpay'){ await openRazorpayIdCheckout({amount:currentFee,userId:user.id,name:user.name,phone:user.phone,email:user.email,apiBase,onSuccess:(data)=>{const next=readUsers().map(u=>u.id===user.id?{...u,paymentStatus:'Paid',utr:data?.paymentId||u.utr}:u);saveUsers(next);alert('Razorpay payment successful. ID अभी DEACTIVE रहेगी; Admin verification के बाद ACTIVE होगी.');}}); }
+      else if(signupPaymentMethod==='razorpay_qr'){ const qr=await createRazorpayQr({amount:currentFee,userId:user.id,purpose:'ID_CREATION',apiBase,description:`${ROLE_LABELS[selectedRole]} ID creation - ${user.name}`}); setSignupQr(qr); alert('Razorpay QR generate हो गया है। QR scan करके payment करें और UTR/Payment ID admin verification के लिए रखें।'); }
+      else { alert(`🎉 ${user.name} की ID request submit हो गई है। अभी ID DEACTIVE है। Admin payment verify करके ACTIVE करेगा।`); setAuthMode('login'); setIdentifier(user.email); }
+      setName('');setPhone('');setEmail('');setSignupPassword('');
+    }catch(err:any){console.error(err);alert(err?.message||'Registration/payment process complete नहीं हुआ।');}
   };
 
   return (
@@ -219,19 +201,22 @@ export default function AuthPortalPage() {
               <input type="password" placeholder="Create password" value={signupPassword} onChange={(e) => setSignupPassword(e.target.value)} style={{ width: '100%', padding: '11px', borderRadius: '8px', background: '#1e293b', border: '1px solid #334155', color: '#fff', boxSizing: 'border-box', fontSize: '13px' }} required />
             </div>
 
-            {/* Dynamic QR */}
-            <div style={{ background: 'rgba(30,41,59,0.8)', borderRadius: '12px', padding: '15px', textAlign: 'center', border: '1px solid #334155' }}>
-              <div style={{ fontSize: '12px', color: '#38bdf8', fontWeight: 'bold', marginBottom: '5px' }}>Scan & Pay Registration Fee: ₹{currentFee.toLocaleString('en-IN')}</div>
-              <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '10px' }}>UPI ID: {COMPANY_UPI_ID}</div>
-              <div style={{ background: '#fff', padding: '10px', borderRadius: '10px', display: 'inline-block' }}>
-                <QRCodeSVG value={upiPayload} size={140} level="M" />
+            <div style={{background:'rgba(30,41,59,0.8)',borderRadius:12,padding:15,border:'1px solid #334155'}}>
+              <div style={{fontSize:12,color:'#38bdf8',fontWeight:'bold',marginBottom:8}}>Payment Method</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+                {([['razorpay','💳 Razorpay'],['razorpay_qr','▦ Razorpay QR'],['upi','📱 UPI + UTR']] as const).map(([v,l])=><button key={v} type="button" onClick={()=>{setSignupPaymentMethod(v);setSignupQr(null)}} style={{padding:'9px 5px',borderRadius:8,border:'1px solid '+(signupPaymentMethod===v?'#38bdf8':'#334155'),background:signupPaymentMethod===v?'rgba(56,189,248,.12)':'#0f172a',color:'#fff',fontSize:11,fontWeight:800}}>{l}</button>)}
               </div>
+              <div style={{fontSize:10,color:'#94a3b8',marginTop:8}}>ID payment सफल होने के बाद भी account DEACTIVE रहेगा जब तक Admin verify करके Activate न करे।</div>
             </div>
 
-            <div>
-              <label style={{ fontSize: '11px', color: '#94a3b8', display: 'block', marginBottom: '4px' }}>UTR / Payment Ref Number *</label>
-              <input type="text" placeholder="Enter UTR after QR payment" value={utr} onChange={(e) => setUtr(e.target.value)} style={{ width: '100%', padding: '11px', borderRadius: '8px', background: '#1e293b', border: '1px solid #334155', color: '#fff', boxSizing: 'border-box', fontSize: '13px' }} required />
-            </div>
+            {signupPaymentMethod==='upi' && <div style={{background:'rgba(30,41,59,0.8)',borderRadius:12,padding:15,textAlign:'center',border:'1px solid #334155'}}>
+              <div style={{fontSize:12,color:'#38bdf8',fontWeight:'bold',marginBottom:5}}>UPI QR • ₹{currentFee.toLocaleString('en-IN')}</div>
+              <div style={{fontSize:10,color:'#94a3b8',marginBottom:10}}>UPI ID: {COMPANY_UPI_ID}</div>
+              <div style={{background:'#fff',padding:10,borderRadius:10,display:'inline-block'}}><QRCodeSVG value={upiPayload} size={140} level="M" /></div>
+              <input type="text" placeholder="Enter UTR after UPI payment" value={utr} onChange={e=>setUtr(e.target.value)} style={{width:'100%',marginTop:10,padding:11,borderRadius:8,background:'#1e293b',border:'1px solid #334155',color:'#fff',boxSizing:'border-box',fontSize:13}} required />
+            </div>}
+            {signupPaymentMethod==='razorpay_qr' && signupQr && <div style={{background:'#fff',borderRadius:12,padding:12,textAlign:'center'}}><QRCodeSVG value={signupQr.imageContent} size={190} includeMargin/><div style={{color:'#111',fontSize:11,fontWeight:800}}>Razorpay QR • ₹{currentFee.toLocaleString('en-IN')}</div></div>}
+            {signupPaymentMethod==='razorpay_qr' && !signupQr && <div style={{fontSize:11,color:'#94a3b8',padding:8}}>Register button दबाने के बाद Razorpay single-use QR generate होगा।</div>}
 
             <button type="submit" style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff', border: 'none', padding: '13px', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px', marginTop: '5px' }}>Register & Submit ID 🚀</button>
           </form>
