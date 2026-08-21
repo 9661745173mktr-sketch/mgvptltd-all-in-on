@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { createAdminToken } from './adminAuth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -36,11 +37,27 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body || {};
-    const user = await prisma.user.findUnique({ where: { email: String(email || '').trim().toLowerCase() } });
-    if (!user || user.password !== password) return res.status(400).json({ error: 'Invalid email or password' });
+    const user = await prisma.user.findFirst({ where: { OR: [{ email: String(email || '').trim().toLowerCase() }, { username: String(email || '').trim() }, { phone: String(email || '').trim() }] } });
+    if (!user || user.password !== password) return res.status(400).json({ error: 'Invalid email, mobile, username or password' });
     if (user.accountStatus !== 'Active') return res.status(403).json({ error: `Account is ${user.accountStatus}. Admin approval is required.` });
     const { password: _password, ...safe } = user;
     res.json({ message: 'Login Successful', user: safe });
+  } catch (error: any) { res.status(500).json({ error: error.message }); }
+});
+
+router.post('/admin-login', async (req, res) => {
+  try {
+    const identifier = String(req.body?.identifier || req.body?.email || req.body?.username || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
+    const configuredEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase();
+    const configuredName = String(process.env.ADMIN_NAME || 'admin').trim().toLowerCase();
+    const configuredPassword = String(process.env.ADMIN_PASSWORD || '');
+    if (!configuredPassword) return res.status(503).json({ error: 'ADMIN_PASSWORD is not configured on the backend.' });
+    if (!password || password !== configuredPassword || (identifier !== configuredEmail && identifier !== configuredName)) {
+      return res.status(401).json({ error: 'Invalid admin credentials.' });
+    }
+    const token = createAdminToken(configuredEmail || configuredName);
+    res.json({ message: 'Admin login successful.', token, admin: { name: process.env.ADMIN_NAME || 'Master Admin', email: process.env.ADMIN_EMAIL || '' } });
   } catch (error: any) { res.status(500).json({ error: error.message }); }
 });
 
