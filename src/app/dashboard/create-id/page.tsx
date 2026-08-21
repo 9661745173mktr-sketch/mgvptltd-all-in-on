@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import CreateIdPanel from '../../../components/CreateIdPanel';
+import CreateIdPanel from '../../../components/CreateIdPanelFixed';
 
 export default function CreateIdPage() {
   return (
