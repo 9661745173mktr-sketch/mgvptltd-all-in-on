@@ -64,9 +64,6 @@ export default function CreateIdPanel() {
     const current = getCurrentUser();
     setUser(current);
     setRole(normalizeRole(current?.role || current?.userRole || current?.user_role || current?.type));
-    if (current?.name) setName('');
-    if (current?.phone) setMobile('');
-    if (current?.email) setEmail('');
   }, []);
 
   const available = useMemo(() => allowedRoles(role), [role]);
@@ -92,9 +89,16 @@ export default function CreateIdPanel() {
       const creatorId = String(user?.id || user?.userId || user?.retailerId || '');
       if (!creatorId && role !== 'admin') throw new Error('Current parent account नहीं मिला। कृपया logout करके real account से दोबारा login करें।');
 
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (role === 'admin') {
+        const adminToken = localStorage.getItem('adminToken') || '';
+        if (!adminToken) throw new Error('Admin session नहीं मिला। कृपया Admin में दोबारा login करें।');
+        headers['x-admin-token'] = adminToken;
+      }
+
       const response = await fetch('/api/id-requests/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           name: name.trim(),
           phone: mobile.trim(),
