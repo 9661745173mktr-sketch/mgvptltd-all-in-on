@@ -12,28 +12,40 @@ function normalizeBase(raw: string) {
   }
 }
 
-// Support both variable names used by earlier deployments. If the value is
-// missing/invalid, fall back to same-origin /api instead of passing a malformed
-// URL to fetch(), which caused Safari's "The string did not match the expected
-// pattern" error on login and ID creation.
+// A production build may intentionally leave this empty when the API is
+// reverse-proxied from the same origin. Invalid environment values are ignored
+// instead of being passed to fetch(), which caused Safari's generic
+// "The string did not match the expected pattern" error.
 export const API_BASE_URL = normalizeBase(
   process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || ''
 );
 
 export function apiUrl(path: string) {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${cleanPath}`;
+  if (API_BASE_URL) return new URL(cleanPath, `${API_BASE_URL}/`).toString();
+  if (typeof window !== 'undefined') return new URL(cleanPath, window.location.origin).toString();
+  return cleanPath;
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
-  return fetch(apiUrl(path), {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init.headers || {}),
-    },
-    cache: 'no-store',
-  });
+  const url = apiUrl(path);
+  try {
+    return await fetch(url, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init.headers || {}),
+      },
+      credentials: 'include',
+      cache: 'no-store',
+    });
+  } catch (error: any) {
+    const message = String(error?.message || '');
+    if (error?.name === 'TypeError' || /expected pattern|invalid url|failed to fetch/i.test(message)) {
+      throw new Error('Portal backend is not reachable. Please configure the live API URL before using Login/Create ID.');
+    }
+    throw error;
+  }
 }
 
 export function getAdminToken() {
@@ -54,4 +66,5 @@ export function getCurrentUser() {
 export function saveCurrentUser(user: any) {
   if (typeof window === 'undefined') return;
   sessionStorage.setItem('portal_user', JSON.stringify(user));
+  window.dispatchEvent(new Event('portal_user_updated'));
 }
