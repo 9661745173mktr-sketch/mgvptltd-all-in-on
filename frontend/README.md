@@ -1,0 +1,1 @@
+MG PVT LTD frontend root compatibility directory for the existing Vercel project.
