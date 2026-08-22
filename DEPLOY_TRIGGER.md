@@ -1,2 +1,4 @@
 Production deployment trigger for the latest portal updates.
-Latest intended source commit: b0878937dc3618c2cc7c82c08087eedccdea867f
+Latest intended source commit: d5fecd619cdb5e376c497854206bbccd3dfec766
+
+Live finalization trigger: merge the approved portal API, real ID creation, role hierarchy, admin approval/payment verification flow, and same-origin production API configuration.
