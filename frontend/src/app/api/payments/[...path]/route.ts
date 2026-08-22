@@ -1,0 +1,9 @@
+import { NextResponse } from 'next/server';
+const HOP=new Set(['connection','keep-alive','proxy-authenticate','proxy-authorization','te','trailer','transfer-encoding','upgrade','host','content-length']);
+function base(){const raw=String(process.env.BACKEND_API_URL||process.env.NEXT_PUBLIC_API_BASE_URL||'').trim();if(!raw)return '';try{const u=new URL(raw);if(!['http:','https:'].includes(u.protocol))return '';const b=u.toString().replace(/\/$/,'');return b.endsWith('/api')?b:`${b}/api`;}catch{return '';}}
+async function proxy(r:Request,p:string[]){const b=base();if(!b)return NextResponse.json({error:'Backend API is not configured on the live deployment.'},{status:503});try{const h=new Headers();r.headers.forEach((v,k)=>{if(!HOP.has(k.toLowerCase()))h.set(k,v);});const m=r.method.toUpperCase();const x=await fetch(`${b}/payments/${p.map(encodeURIComponent).join('/')}${new URL(r.url).search}`,{method:m,headers:h,body:['GET','HEAD'].includes(m)?undefined:await r.arrayBuffer(),cache:'no-store'});const o=new Headers();x.headers.forEach((v,k)=>{if(!HOP.has(k.toLowerCase()))o.set(k,v);});return new NextResponse(x.body,{status:x.status,statusText:x.statusText,headers:o});}catch(e:any){return NextResponse.json({error:'Backend API is unreachable.',detail:e?.message||'Unknown error'},{status:502});}}
+export async function GET(r:Request,c:{params:Promise<{path:string[]}>}){return proxy(r,(await c.params).path||[])}
+export async function POST(r:Request,c:{params:Promise<{path:string[]}>}){return proxy(r,(await c.params).path||[])}
+export async function PUT(r:Request,c:{params:Promise<{path:string[]}>}){return proxy(r,(await c.params).path||[])}
+export async function PATCH(r:Request,c:{params:Promise<{path:string[]}>}){return proxy(r,(await c.params).path||[])}
+export async function DELETE(r:Request,c:{params:Promise<{path:string[]}>}){return proxy(r,(await c.params).path||[])}
