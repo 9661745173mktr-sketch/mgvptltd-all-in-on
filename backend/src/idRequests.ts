@@ -21,13 +21,14 @@ router.post('/register', async (req, res) => {
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     const cleanEmail = String(email || '').trim().toLowerCase();
     const cleanPassword = String(password || '');
+    const creatorIsAdmin = !parentId && String(req.headers['x-admin-token'] || '').trim() !== '';
     if (!cleanName || cleanPhone.length !== 10 || !cleanEmail || cleanPassword.length < 6) return res.status(400).json({ error: 'Real name, valid 10-digit mobile, Gmail/email and password (6+ characters) are required.' });
     if (!ROLE_FEES[normalizedRole]) return res.status(400).json({ error: 'Invalid partner role.' });
     if (String(paymentMethod || '').toLowerCase() === 'upi' && !String(utr || '').trim()) return res.status(400).json({ error: 'UTR is required for UPI payment.' });
 
     let parent: any = null;
     if (parentId) parent = await prisma.user.findUnique({ where: { id: String(parentId) } });
-    if (normalizedRole !== 'RETAILER' && !parent) return res.status(403).json({ error: 'Only an approved parent account can create this level.' });
+    if (normalizedRole !== 'RETAILER' && !parent && !creatorIsAdmin) return res.status(403).json({ error: 'Only an approved parent account can create this level.' });
     if (parent) {
       if (parent.accountStatus !== 'Active' || parent.paymentStatus !== 'Verified') return res.status(403).json({ error: 'Parent account is not active.' });
       const allowedChildren = CHILD_ROLES[String(parent.role || '').toUpperCase()] || [];
