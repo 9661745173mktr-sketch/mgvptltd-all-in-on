@@ -1,127 +1,77 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+
+type ServiceRequest = { id: string; status: string; amountPaid: number; inputData: string; adminRemark?: string | null; createdAt: string; user?: { name?: string; phone?: string; email?: string; role?: string }; service?: { title?: string; price?: number; category?: { name?: string } } };
 
 export default function AdminServiceRequestsPage() {
-  const [requests, setRequests] = useState<any[]>([]);
+  const [requests, setRequests] = useState<ServiceRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState('');
 
-  const loadServiceRequests = () => {
+  const loadRequests = async () => {
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
     try {
-      // लोकल स्टोरेज से डेटा प्राप्त करें
-      const item = localStorage.getItem('service_requests_db') || localStorage.getItem('aadhaar_correction_db');
-      let allData: any[] = [];
-
-      if (item) {
-        const parsed = JSON.parse(item);
-        if (Array.isArray(parsed)) {
-          allData = parsed;
-        }
-      }
-
-      // id के आधार पर डुप्लीकेट डेटा को पूरी तरह फिल्टर करके हटाएं
-      const uniqueData = allData.filter((v, i, a) => v && v.id && i === a.findIndex(t => t && t.id === v.id));
-
-      if (uniqueData.length === 0) {
-        const defaultRequests = [
-          { id: 1, retailerName: 'SANJAY KUMAR', mobile: '9267916288', serviceName: 'Aadhaar Correction / PAN', status: 'Pending', date: '2026-08-19' },
-          { id: 2, retailerName: 'AMIT KUMAR', mobile: '9876543210', serviceName: 'AEPS Cash Withdrawal', status: 'Pending', date: '2026-08-19' }
-        ];
-        setRequests(defaultRequests);
-        localStorage.setItem('service_requests_db', JSON.stringify(defaultRequests));
-      } else {
-        setRequests(uniqueData);
-        // लोकल स्टोरेज को भी क्लीन करके अपडेट करें ताकि संख्या बढ़े नहीं
-        localStorage.setItem('service_requests_db', JSON.stringify(uniqueData));
-      }
-    } catch (e) {
-      console.error(e);
-      setRequests([]);
-    }
+      const res = await fetch(`${API_BASE}/api/admin/service-requests`, { headers: { 'x-admin-token': token } });
+      const data = await res.json();
+      if (res.status === 401) { localStorage.removeItem('adminToken'); window.location.href = '/admin/login'; return; }
+      if (!res.ok) throw new Error(data.error || 'Unable to load service requests.');
+      setRequests(Array.isArray(data.requests) ? data.requests : []);
+      setError('');
+    } catch (e: any) { setError(e.message || 'Unable to load service requests.'); }
+    finally { setLoading(false); }
   };
 
-  useEffect(() => {
-    loadServiceRequests();
-    window.addEventListener('storage', loadServiceRequests);
-    window.addEventListener('service_updated', loadServiceRequests);
+  useEffect(() => { loadRequests(); const timer = window.setInterval(loadRequests, 10000); return () => window.clearInterval(timer); }, []);
 
-    return () => {
-      window.removeEventListener('storage', loadServiceRequests);
-      window.removeEventListener('service_updated', loadServiceRequests);
-    };
-  }, []);
-
-  const handleAction = (id: number, newStatus: string) => {
-    const updated = requests.map(item => item.id === id ? { ...item, status: newStatus } : item);
-    
-    // यूनिक डेटा फिर से सुनिश्चित करें
-    const uniqueUpdated = updated.filter((v, i, a) => v && v.id && i === a.findIndex(t => t && t.id === v.id));
-
-    setRequests(uniqueUpdated);
-    localStorage.setItem('service_requests_db', JSON.stringify(uniqueUpdated));
-    localStorage.setItem('aadhaar_correction_db', JSON.stringify(uniqueUpdated));
-    
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new Event('service_updated'));
-    alert(`Service request status updated to ${newStatus}!`);
+  const handleAction = async (id: string, action: 'approve' | 'reject') => {
+    const remark = window.prompt(action === 'approve' ? 'Approval remark (optional):' : 'Reject reason (optional):', '');
+    if (remark === null) return;
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+    setBusy(id);
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/service-requests/${id}/${action}`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-token': token }, body: JSON.stringify({ remark }) });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Unable to ${action} request.`);
+      await loadRequests();
+      alert(action === 'approve' ? 'Request approved.' : 'Request rejected and wallet refunded.');
+    } catch (e: any) { alert(e.message || 'Action failed.'); }
+    finally { setBusy(null); }
   };
 
-  const pendingCount = requests.filter(r => r && (r.status === 'Pending' || !r.status)).length;
+  const pendingCount = requests.filter(r => r.status === 'PENDING').length;
 
   return (
     <div style={{ color: '#fff', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
-      
-      {/* हेडर और काउंटिंग */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
-        <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#38bdf8', margin: 0 }}>Service Requests Management</h1>
-          <p style={{ fontSize: '13px', color: '#94a3b8', margin: '5px 0 0 0' }}>Monitor and process service applications submitted by retailers & distributors.</p>
-        </div>
-        <div style={{ background: '#1e293b', padding: '12px 20px', borderRadius: '10px', border: '1px solid #334155', fontSize: '14px' }}>
-          Pending Requests: <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '16px' }}>{pendingCount}</span>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px', borderBottom: '1px solid #1e293b', paddingBottom: '20px' }}>
+        <div><h1 style={{ fontSize: '24px', fontWeight: 800, color: '#38bdf8', margin: 0 }}>Service Requests Management</h1><p style={{ fontSize: '13px', color: '#94a3b8', margin: '5px 0 0' }}>Real retailer/distributor details from the backend database.</p></div>
+        <div style={{ background: '#1e293b', padding: '12px 20px', borderRadius: '10px', border: '1px solid #334155', fontSize: '14px' }}>Pending: <span style={{ color: '#f59e0b', fontWeight: 'bold', fontSize: '16px' }}>{pendingCount}</span></div>
       </div>
-
-      {/* सर्विस रिक्वेस्ट लिस्ट */}
-      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', padding: '25px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#f59e0b', marginBottom: '20px' }}>📥 All Service Applications ({requests.length})</h2>
-
-        {requests.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#64748b' }}>No service requests found.</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-            {requests.map((req: any, index: number) => (
-              <div key={`${req.id}-${index}`} style={{ background: '#1e293b', padding: '18px 20px', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #334155' }}>
-                <div>
-                  <div style={{ fontWeight: 'bold', color: '#fff', fontSize: '16px' }}>
-                    {req.retailerName} <span style={{ color: '#38bdf8', fontSize: '13px' }}>({req.mobile})</span>
-                  </div>
-                  <div style={{ fontSize: '14px', color: '#34d399', marginTop: '4px', fontWeight: '600' }}>
-                    Service: {req.serviceName}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '4px' }}>
-                    Date: {req.date || 'Today'}
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                  <span style={{ padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', background: req.status === 'Approved' ? '#10b98122' : '#f59e0b22', color: req.status === 'Approved' ? '#10b981' : '#f59e0b' }}>
-                    {req.status || 'Pending'}
-                  </span>
-                  
-                  {req.status !== 'Approved' && (
-                    <button 
-                      onClick={() => handleAction(req.id, 'Approved')}
-                      style={{ background: '#10b981', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
-                    >
-                      Approve ✅
-                    </button>
-                  )}
-                </div>
+      {error && <div style={{ background: '#3f1d1d', border: '1px solid #ef4444', color: '#fecaca', padding: '12px 15px', borderRadius: '10px', marginBottom: '15px' }}>{error}</div>}
+      <div style={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: '16px', padding: '20px' }}>
+        {loading ? <div style={{ padding: '35px', textAlign: 'center', color: '#94a3b8' }}>Loading live requests…</div> : requests.length === 0 ? <div style={{ padding: '35px', textAlign: 'center', color: '#64748b' }}>No service requests found.</div> : <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {requests.map(req => {
+            let details: any = {};
+            try { details = req.inputData ? JSON.parse(req.inputData) : {}; } catch { details = { raw: req.inputData }; }
+            return <div key={req.id} style={{ background: '#1e293b', padding: '16px', borderRadius: '12px', border: '1px solid #334155' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: '15px', flexWrap: 'wrap' }}>
+                <div style={{ minWidth: '260px' }}><div style={{ fontWeight: 800, color: '#fff', fontSize: '16px' }}>{req.service?.title || 'Service'}</div><div style={{ color: '#4ade80', marginTop: '5px', fontWeight: 700 }}>₹{Number(req.amountPaid || 0).toFixed(2)}</div></div>
+                <span style={{ alignSelf: 'flex-start', padding: '6px 12px', borderRadius: '999px', fontSize: '11px', fontWeight: 800, background: req.status === 'APPROVED' ? '#10b98122' : req.status === 'REJECTED' ? '#ef444422' : '#f59e0b22', color: req.status === 'APPROVED' ? '#34d399' : req.status === 'REJECTED' ? '#f87171' : '#fbbf24' }}>{req.status}</span>
               </div>
-            ))}
-          </div>
-        )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px', marginTop: '12px', padding: '12px', background: '#0f172a', borderRadius: '10px', color: '#cbd5e1', fontSize: '12px' }}>
+                <div><b>Name:</b> {req.user?.name || '—'}</div><div><b>Mobile:</b> {req.user?.phone || '—'}</div><div><b>Gmail:</b> {req.user?.email || '—'}</div><div><b>Role:</b> {req.user?.role || '—'}</div><div><b>Category:</b> {req.service?.category?.name || '—'}</div><div><b>Submitted:</b> {new Date(req.createdAt).toLocaleString('en-IN')}</div>
+              </div>
+              <div style={{ marginTop: '10px', color: '#94a3b8', fontSize: '12px' }}><b>Customer details:</b> {Object.keys(details).length ? Object.entries(details).map(([k, v]) => `${k}: ${String(v)}`).join(' • ') : '—'}</div>
+              {req.adminRemark && <div style={{ marginTop: '8px', color: '#cbd5e1', fontSize: '12px' }}><b>Admin remark:</b> {req.adminRemark}</div>}
+              {req.status === 'PENDING' && <div style={{ display: 'flex', gap: '10px', marginTop: '14px' }}><button disabled={busy === req.id} onClick={() => handleAction(req.id, 'approve')} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>Approve ✅</button><button disabled={busy === req.id} onClick={() => handleAction(req.id, 'reject')} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '9px 16px', borderRadius: '8px', fontWeight: 800, cursor: 'pointer' }}>Reject + Refund ↩️</button></div>}
+            </div>;
+          })}
+        </div>}
       </div>
-
     </div>
   );
 }

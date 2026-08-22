@@ -6,11 +6,12 @@ import React, {
   useState,
 } from 'react';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { QRCodeSVG } from 'qrcode.react';
 
 import ServiceRequestModal from '../../components/ServiceRequestModal';
 import CreateIdPanel from '../../components/CreateIdPanel';
+import { createRazorpayQr, openRazorpayCheckout } from '../utils/razorpay';
 
 import {
   allServices,
@@ -89,10 +90,11 @@ type RetailerChat = {
 
 export default function RetailerDashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  const [walletBalance, setWalletBalance] = useState(48950);
+  const [walletBalance, setWalletBalance] = useState(0);
 
   const [selectedService, setSelectedService] =
     useState<PortalService | null>(null);
@@ -105,6 +107,7 @@ export default function RetailerDashboardPage() {
   ======================================================= */
 
   const [walletAmount, setWalletAmount] = useState('');
+  const [razorpayWalletQr, setRazorpayWalletQr] = useState<any>(null);
   const [utr, setUtr] = useState('');
 
   const [walletHistory, setWalletHistory] =
@@ -131,13 +134,13 @@ export default function RetailerDashboardPage() {
   ======================================================= */
 
   const [profileName, setProfileName] =
-    useState('SANJAY KUMAR');
+    useState('');
 
   const [profileMobile, setProfileMobile] =
-    useState('9267916288');
+    useState('');
 
   const [profileEmail, setProfileEmail] =
-    useState('sanjay@mgpvtltd.com');
+    useState('');
 
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -154,7 +157,7 @@ export default function RetailerDashboardPage() {
     }
 
     if (!id) {
-      id = 'retailer-1';
+      id = '';
 
       localStorage.setItem(
         'retailer_id',
@@ -334,6 +337,15 @@ export default function RetailerDashboardPage() {
 
   const loadData = () => {
     try {
+      try {
+        const current = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        setProfileName(String(current?.name || localStorage.getItem('profileName') || ''));
+        setProfileMobile(String(current?.phone || localStorage.getItem('profileMobile') || ''));
+        setProfileEmail(String(current?.email || localStorage.getItem('profileEmail') || ''));
+        const currentWallet = Number(current?.walletBalance ?? localStorage.getItem('retailerWalletBalance') ?? 0);
+        setWalletBalance(Number.isFinite(currentWallet) ? currentWallet : 0);
+      } catch {}
+
       const bal =
         localStorage.getItem(
           'retailerWalletBalance'
@@ -409,7 +421,9 @@ export default function RetailerDashboardPage() {
 
       setWalletHistory(walletParsed);
       setServiceHistory(serviceParsed);
-      setServiceStatuses(statusParsed);
+      const allActive: Record<string, boolean> = {};
+      for (const svc of allServices) allActive[svc.id] = true;
+      setServiceStatuses({ ...allActive, ...statusParsed });
     } catch (error) {
       console.error(
         'Dashboard load error:',
@@ -425,6 +439,11 @@ export default function RetailerDashboardPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && menuItems.some((m) => m.id === tab)) setActiveTab(tab);
+  }, [searchParams]);
 
   /* =========================================================
      EVENTS
@@ -997,9 +1016,8 @@ export default function RetailerDashboardPage() {
                   ) {
                     openSupportChat();
                   } else {
-                    setActiveTab(
-                      item.id
-                    );
+                    setActiveTab(item.id);
+                    router.replace(item.id === 'dashboard' ? '/dashboard' : `/dashboard?tab=${item.id}`, { scroll: false });
                   }
                 }}
                 className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-semibold transition ${
@@ -1912,6 +1930,18 @@ function WalletPanel({
           <h3 className="mb-6 text-lg font-black">
             💳 Enter Wallet Load Details
           </h3>
+
+          <button type="button" onClick={async()=>{
+            if(!validAmount){ alert('पहले ₹10 या उससे अधिक amount दर्ज करें।'); return; }
+            try {
+              const apiBase=process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+              const userId=localStorage.getItem('user_id') || localStorage.getItem('retailer_id') || '';
+              await openRazorpayCheckout({amount:numericAmount,userId,name:localStorage.getItem('profileName')||'MG Portal User',phone:localStorage.getItem('profileMobile')||'',email:localStorage.getItem('profileEmail')||'',apiBase,onSuccess:()=>{alert('Razorpay payment verified. Wallet balance add हो गया है।'); window.dispatchEvent(new Event('wallet_updated'));}});
+            } catch(e:any){ alert(e?.message || 'Razorpay payment शुरू नहीं हो पाया।'); }
+          }} className="mb-5 w-full rounded-xl bg-gradient-to-r from-indigo-500 to-violet-600 py-3.5 text-sm font-black">💳 Razorpay से Add Balance — Instant Wallet Credit</button>
+
+          <button type="button" onClick={async()=>{if(!validAmount){alert('पहले ₹10 या उससे अधिक amount दर्ज करें।');return;}try{const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:5000';const userId=localStorage.getItem('user_id')||localStorage.getItem('retailer_id')||'';const qr=await createRazorpayQr({amount:numericAmount,userId,purpose:'WALLET_RECHARGE',apiBase,description:'MG PVT LTD Wallet Recharge'});setRazorpayWalletQr(qr);alert('Razorpay QR generate हो गया है। Scan करके payment करें।');}catch(e:any){alert(e?.message||'Razorpay QR create नहीं हुआ।');}}} className="mb-5 w-full rounded-xl border border-cyan-400/30 bg-cyan-400/10 py-3 text-sm font-black text-cyan-300">▦ Razorpay QR से Add Balance</button>
+          {razorpayWalletQr && <div className="mb-5 rounded-2xl bg-white p-4 text-center"><QRCodeSVG value={razorpayWalletQr.imageContent} size={220} includeMargin/><div className="text-xs font-black text-slate-900">Razorpay QR • ₹{numericAmount.toLocaleString('en-IN')}</div></div>}
 
           <form
             onSubmit={

@@ -1,68 +1,11 @@
 'use client';
-import React, { useState } from 'react';
-
-export default function RetailerWalletLoadPage() {
-  const [utrNumber, setUtrNumber] = useState('');
-
-  const handleSubmitUTR = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!utrNumber || utrNumber.length < 6) {
-      alert('Please enter a valid 12-digit UTR / Reference No');
-      return;
-    }
-
-    // नया रिक्वेस्ट ऑब्जेक्ट बनाएँ
-    const newRequest = {
-      id: Date.now(),
-      retailerName: 'SANJAY KUMAR',
-      mobile: '9267916288',
-      amount: '₹600', // जो स्क्रीनशॉट के अनुसार है
-      utr: utrNumber,  // यूटीआर नंबर ठीक से सेव हो रहा है
-      status: 'Pending',
-      timestamp: new Date().toISOString()
-    };
-
-    // localStorage से पुरानी लिस्ट निकालें और नई जोड़ें
-    const existingRequests = JSON.parse(localStorage.getItem('walletRequests') || '[]');
-    const updatedRequests = [newRequest, ...existingRequests];
-    
-    localStorage.setItem('walletRequests', JSON.stringify(updatedRequests));
-
-    // एडमिन पैनल को लाइव अपडेट भेजने के लिए इवेंट ट्रिगर करें
-    window.dispatchEvent(new Event('storage'));
-
-    alert('UTR submitted to Admin successfully! Balance will be added after admin verification.');
-    setUtrNumber('');
-  };
-
-  return (
-    <div style={{ color: '#fff', fontFamily: 'Inter, sans-serif', padding: '20px' }}>
-      <h1 style={{ fontSize: '22px', marginBottom: '20px' }}>Wallet Load / Add Money</h1>
-      
-      <div style={{ background: '#111827', padding: '30px', borderRadius: '16px', maxWidth: '450px', border: '1px solid #1f2937' }}>
-        <h3 style={{ marginBottom: '15px', color: '#38bdf8' }}>Scan & Pay ₹600</h3>
-        
-        <form onSubmit={handleSubmitUTR} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div>
-            <label style={{ fontSize: '12px', color: '#94a3b8', display: 'block', marginBottom: '5px' }}>
-              Enter 12-digit UTR / Reference No *
-            </label>
-            <input 
-              type="text" 
-              placeholder="e.g. 998877445556" 
-              value={utrNumber}
-              onChange={(e) => setUtrNumber(e.target.value)}
-              style={{ width: '100%', padding: '12px', borderRadius: '8px', background: '#1f2937', border: '1px solid #374151', color: '#fff', outline: 'none', boxSizing: 'border-box' }}
-              required 
-            />
-          </div>
-
-          <button type="submit" style={{ background: '#10b981', color: '#fff', border: 'none', padding: '12px', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-            Submit UTR 🚀
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+import React,{useEffect,useState} from 'react';
+import {readUsers,addAdminNotification} from '../../../utils/authStore';
+import {setWallet,addTxn} from '../../../utils/walletStore';
+export default function RetailerWalletLoadPage(){
+ const [requests,setRequests]=useState<any[]>([]); const [users,setUsers]=useState<any[]>([]);
+ const load=()=>{try{setRequests(JSON.parse(localStorage.getItem('wallet_requests_db')||'[]'))}catch{setRequests([])}setUsers(readUsers())};
+ useEffect(()=>{load();window.addEventListener('wallet_updated',load);window.addEventListener('users_updated',load);return()=>{window.removeEventListener('wallet_updated',load);window.removeEventListener('users_updated',load)}},[]);
+ const action=(r:any,status:'Approved'|'Rejected')=>{const all=JSON.parse(localStorage.getItem('wallet_requests_db')||'[]');const next=all.map((x:any)=>x.id===r.id?{...x,status,approvedAt:new Date().toISOString()}:x);localStorage.setItem('wallet_requests_db',JSON.stringify(next));if(status==='Approved'){const us=readUsers();const u=us.find(x=>String(x.id)===String(r.userId)||String(x.phone)===String(r.phone));if(u){u.walletBalance=Number(u.walletBalance||0)+Number(r.amount||0);localStorage.setItem('appUsers',JSON.stringify(us));addTxn({userId:u.id,type:'CREDIT',amount:Number(r.amount),description:'Admin approved wallet recharge',reference:r.utr||r.id});addAdminNotification({type:'WALLET_APPROVED',title:'Wallet Recharge Approved',message:`₹${Number(r.amount).toFixed(2)} added to ${u.name||u.email}`,userId:u.id,status:'Read'});}}window.dispatchEvent(new Event('wallet_updated'));alert(status==='Approved'?'Wallet credited successfully.':'Request rejected.');};
+ return <div style={{padding:25,color:'#fff'}}><h1>Wallet Recharge Requests</h1><p style={{color:'#94a3b8'}}>UPI/UTR requests: admin approval ke baad user wallet credit hota hai. Admin source balance par koi limit/deduction nahi hai.</p>{requests.map(r=><div key={r.id} style={{background:'#0f172a',padding:18,borderRadius:12,margin:'10px 0',border:'1px solid #1e293b'}}><b>{r.user||r.retailerName}</b> • {r.phone||'-'} • {r.email||'-'}<div>Amount: ₹{Number(r.amount||0).toFixed(2)} • UTR: {r.utr||'-'} • Status: {r.status||'Pending'}</div>{(r.status||'Pending')==='Pending'&&<div style={{marginTop:10,display:'flex',gap:8}}><button onClick={()=>action(r,'Approved')} style={{background:'#10b981',color:'#fff',border:0,padding:'8px 14px',borderRadius:7}}>Approve & Credit</button><button onClick={()=>action(r,'Rejected')} style={{background:'#ef4444',color:'#fff',border:0,padding:'8px 14px',borderRadius:7}}>Reject</button></div>}</div>)}</div>
 }

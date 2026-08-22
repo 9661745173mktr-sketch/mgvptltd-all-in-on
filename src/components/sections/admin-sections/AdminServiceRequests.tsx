@@ -1,16 +1,28 @@
 'use client';
 import React, { useState } from 'react';
+import { refundService } from '../../../app/utils/walletStore';
 
 export default function AdminServiceRequests({ requests }: { requests: Array<any> }) {
   const [selectedReq, setSelectedReq] = useState<any>(null);
   const [remark, setRemark] = useState('');
   const [slipFile, setSlipFile] = useState<File | null>(null);
 
-  const handleAction = (id: string, actionType: string) => {
-    alert(`Request marked as ${actionType}!\nRemark: ${remark}\nSlip: ${slipFile ? slipFile.name : 'None'}`);
-    setSelectedReq(null);
-    setRemark('');
-    setSlipFile(null);
+  const handleAction = async (id: string, actionType: string) => {
+    const all = JSON.parse(localStorage.getItem('service_requests_db') || '[]');
+    const req = all.find((x:any)=>String(x.id)===String(id));
+    if(!req) return;
+    let slipData='';
+    if(slipFile){ slipData=await new Promise<string>((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(String(r.result||'')); r.onerror=reject; r.readAsDataURL(slipFile); }); }
+    if(actionType==='Rejected' || actionType==='Refunded'){
+      if(!req.refundProcessed && Number(req.amountPaid ?? req.fee ?? 0)>0){ refundService(Number(req.amountPaid ?? req.fee ?? 0), req.userId || req.retailerId || '', `Refund: ${req.serviceName || req.title || 'Service'}`, String(req.id)); req.refundProcessed=true; }
+      req.status='Rejected';
+    } else { req.status='Approved'; }
+    req.adminRemark=remark; if(slipData){req.adminSlipData=slipData; req.adminSlipName=slipFile?.name; req.adminSlipMime=slipFile?.type;} req.updatedAt=new Date().toISOString();
+    localStorage.setItem('service_requests_db',JSON.stringify(all));
+    localStorage.setItem('aadhaar_correction_db',JSON.stringify(all.filter((x:any)=>x.category==='Aadhaar Correction')));
+    window.dispatchEvent(new Event('service_updated')); window.dispatchEvent(new Event('wallet_updated'));
+    setSelectedReq(null); setRemark(''); setSlipFile(null);
+    alert(actionType==='Approved' ? 'Request approved.' : 'Request rejected और wallet refund कर दिया गया है।');
   };
 
   return (

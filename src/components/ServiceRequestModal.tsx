@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import type { PortalService } from '../app/utils/serviceCatalog';
+import { debitService } from '../app/utils/walletStore';
 
 type Props = {
   service: PortalService | null;
@@ -64,111 +65,48 @@ export default function ServiceRequestModal({
   /* =========================================================
      SUBMIT REQUEST
   ========================================================= */
-  const submit = () => {
+  const fileToDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const submit = async () => {
     if (!validate()) return;
-
-    const item = {
-      id: `${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 8)}`,
-
-      retailerName,
-      mobile: retailerMobile,
-
-      serviceId: service.id,
-      serviceName: service.title,
-      category: service.category,
-
-      fee: service.fee.toFixed(2),
-      commission: service.commission || 0,
-
-      status: 'Pending',
-
-      date: new Date().toLocaleDateString('en-IN'),
-      timestamp: new Date().toISOString(),
-
-      details: {
-        ...data,
-      },
-    };
+    let fee = Number(service.fee || 0);
+    try { const prices=JSON.parse(localStorage.getItem('master_service_prices')||'{}'); if(prices && prices[service.id] !== undefined) fee=Number(prices[service.id]); } catch {}
+    const userId = typeof window !== 'undefined' ? (localStorage.getItem('user_id') || localStorage.getItem('retailer_id') || '') : '';
+    if (fee > 0 && !debitService(fee, userId, service.title, service.id)) {
+      alert(`Wallet balance कम है। इस सेवा के लिए ₹${fee.toFixed(2)} चाहिए। पहले wallet में balance add करें।`);
+      return;
+    }
 
     try {
-      /* =====================================================
-         SERVICE REQUEST DATABASE
-      ===================================================== */
-
-      const existingRaw = localStorage.getItem(
-        'service_requests_db'
-      );
-
-      let existing: any[] = [];
-
-      try {
-        const parsed = JSON.parse(existingRaw || '[]');
-
-        if (Array.isArray(parsed)) {
-          existing = parsed;
-        }
-      } catch {
-        existing = [];
+      const details: Record<string,string> = {...data};
+      // Persist uploaded admin/customer documents so the request can be reviewed.
+      for (const field of fields.filter((f:any)=>f.type==='file')) {
+        const input = document.querySelector(`input[type="file"][data-field="${field.name}"]`) as HTMLInputElement | null;
+        const file = input?.files?.[0];
+        if (file && file.size <= 5 * 1024 * 1024) details[`${field.name}__data`] = await fileToDataUrl(file);
+        if (file) { details[`${field.name}__name`] = file.name; details[`${field.name}__mime`] = file.type; }
       }
-
-      localStorage.setItem(
-        'service_requests_db',
-        JSON.stringify([item, ...existing])
-      );
-
-      /* =====================================================
-         AADHAAR CORRECTION DATABASE
-      ===================================================== */
-
-      const aadhaarRaw = localStorage.getItem(
-        'aadhaar_correction_db'
-      );
-
-      let aadhaarExisting: any[] = [];
-
-      try {
-        const parsed = JSON.parse(aadhaarRaw || '[]');
-
-        if (Array.isArray(parsed)) {
-          aadhaarExisting = parsed;
-        }
-      } catch {
-        aadhaarExisting = [];
-      }
-
-      localStorage.setItem(
-        'aadhaar_correction_db',
-        JSON.stringify([item, ...aadhaarExisting])
-      );
-
-      /* =====================================================
-         UPDATE EVENT
-      ===================================================== */
-
-      window.dispatchEvent(
-        new Event('service_updated')
-      );
-
-      alert(
-        'Request successfully submitted. It has been sent to the verification queue.'
-      );
-
-      onSubmitted();
-      onClose();
+      const item = { id:`${Date.now()}-${Math.random().toString(36).slice(2,8)}`, userId, retailerName, mobile:retailerMobile, serviceId:service.id, serviceName:service.title, title:service.title, category:service.category, fee, amountPaid:fee, commission:service.commission||0, status:'Pending', date:new Date().toLocaleDateString('en-IN'), timestamp:new Date().toISOString(), details, refundProcessed:false };
+      const key='service_requests_db';
+      const existing=JSON.parse(localStorage.getItem(key)||'[]');
+      localStorage.setItem(key, JSON.stringify([item,...(Array.isArray(existing)?existing:[])]));
+      if (service.category==='Aadhaar Correction') localStorage.setItem('aadhaar_correction_db',JSON.stringify([item,...JSON.parse(localStorage.getItem('aadhaar_correction_db')||'[]')]));
+      window.dispatchEvent(new Event('service_updated')); window.dispatchEvent(new Event('wallet_updated'));
+      alert('Request successfully submitted. Service charge wallet से deduct होकर Admin wallet में credit हो गया है।');
+      onSubmitted(); onClose();
     } catch (error) {
-      console.error(
-        'Service request save error:',
-        error
-      );
-
-      alert(
-        'Unable to save the request. Please try again.'
-      );
+      console.error(error);
+      // If local save fails after debit, refund immediately.
+      const { refundService } = await import('../app/utils/walletStore');
+      refundService(fee,userId,'Request save failed - automatic refund',service.id);
+      alert('Request save नहीं हो पाया। राशि wallet में वापस कर दी गई है।');
     }
   };
-
   /* =========================================================
      COMMON INPUT STYLE
   ========================================================= */
@@ -194,6 +132,7 @@ export default function ServiceRequestModal({
     if (field.type === 'file') {
       return (
         <input
+          data-field={field.name}
           type="file"
           required={field.required}
           accept={
