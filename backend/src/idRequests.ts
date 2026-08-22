@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { randomBytes, scryptSync } from 'node:crypto';
+import { verifyAdminToken } from './adminAuth.js';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -21,7 +22,8 @@ router.post('/register', async (req, res) => {
     const cleanPhone = String(phone || '').replace(/\D/g, '');
     const cleanEmail = String(email || '').trim().toLowerCase();
     const cleanPassword = String(password || '');
-    const creatorIsAdmin = !parentId && String(req.headers['x-admin-token'] || '').trim() !== '';
+    const adminToken = String(req.headers['x-admin-token'] || '').trim();
+    const creatorIsAdmin = verifyAdminToken(adminToken);
     if (!cleanName || cleanPhone.length !== 10 || !cleanEmail || cleanPassword.length < 6) return res.status(400).json({ error: 'Real name, valid 10-digit mobile, Gmail/email and password (6+ characters) are required.' });
     if (!ROLE_FEES[normalizedRole]) return res.status(400).json({ error: 'Invalid partner role.' });
     if (String(paymentMethod || '').toLowerCase() === 'upi' && !String(utr || '').trim()) return res.status(400).json({ error: 'UTR is required for UPI payment.' });
