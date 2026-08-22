@@ -4,9 +4,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "postinstall": "prisma generate --schema=backend/prisma/schema.prisma"
   },
   "dependencies": {
+    "@prisma/client": "^5.10.0",
     "lucide-react": "^0.354.0",
     "next": "^16.3.0",
     "qrcode.react": "^4.2.0",
@@ -19,6 +21,7 @@
     "@types/react": "^19.2.18",
     "autoprefixer": "^10.5.4",
     "postcss": "^8.5.25",
+    "prisma": "^5.10.0",
     "tailwindcss": "^4.3.3",
     "typescript": "7.0.2"
   }
