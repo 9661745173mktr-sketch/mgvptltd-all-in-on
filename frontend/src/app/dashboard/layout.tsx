@@ -8,25 +8,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem('currentUser');
-      const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
-      if (!loggedIn || !raw) {
-        router.replace('/auth/login');
-        return;
+    let cancelled = false;
+    async function validate() {
+      try {
+        const raw = localStorage.getItem('currentUser');
+        if (localStorage.getItem('isLoggedIn') !== 'true' || !raw) throw new Error('no-session');
+        const user = JSON.parse(raw);
+        if (!user?.id) throw new Error('no-user');
+        const response = await fetch(`/api/auth/check?id=${encodeURIComponent(String(user.id))}`, { cache: 'no-store' });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.active) throw new Error('inactive');
+        if (!cancelled) setReady(true);
+      } catch {
+        ['currentUser', 'user', 'loggedInUser', 'user_id', 'retailer_id', 'retailer_logged_in', 'isLoggedIn', 'user_role_type', 'retailerWalletBalance'].forEach(k => localStorage.removeItem(k));
+        if (!cancelled) router.replace('/auth/login');
       }
-      const user = JSON.parse(raw);
-      if (!user?.id || String(user.accountStatus).toLowerCase() !== 'active' || String(user.paymentStatus).toLowerCase() !== 'verified') {
-        localStorage.removeItem('isLoggedIn');
-        router.replace('/auth/login');
-        return;
-      }
-      setReady(true);
-    } catch {
-      router.replace('/auth/login');
     }
+    validate();
+    return () => { cancelled = true; };
   }, [router]);
 
-  if (!ready) return <main className="min-h-screen bg-[#050914] text-white grid place-items-center"><div className="text-sm text-slate-400">Opening secure dashboard…</div></main>;
+  if (!ready) return <main className="min-h-screen bg-[#050914] text-white grid place-items-center"><div className="text-sm text-slate-400">Verifying live account…</div></main>;
   return <>{children}</>;
 }
