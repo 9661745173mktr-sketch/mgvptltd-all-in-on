@@ -6,7 +6,8 @@ function backendUrl() {
   try {
     const url = new URL(raw);
     if (!['http:', 'https:'].includes(url.protocol)) return '';
-    return `${url.toString().replace(/\/$/, '')}/id-requests/register`;
+    const base = url.toString().replace(/\/$/, '');
+    return `${base.endsWith('/api') ? base : `${base}/api`}/id-requests/register`;
   } catch {
     return '';
   }
