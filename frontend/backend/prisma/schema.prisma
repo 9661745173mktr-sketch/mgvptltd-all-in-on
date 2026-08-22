@@ -1,0 +1,164 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String           @id @default(uuid())
+  name          String?
+  username      String?          @unique
+  email         String           @unique
+  phone         String?          @unique
+  password      String
+  role          String           @default("RETAILER")
+  parentId      String?
+  walletBalance Float            @default(0.00)
+  accountStatus String           @default("Pending")
+  paymentStatus String           @default("Pending")
+  approvedAt    DateTime?
+  approvedBy    String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @default(now()) @updatedAt
+  requests      ServiceRequest[]
+  products      Product[]
+  orders        Order[]
+  walletTransactions WalletTransaction[]
+  razorpayPayments RazorpayPayment[]
+  serviceRequestsAsAdmin ServiceRequest[] @relation("AdminServiceRequests")
+}
+
+model Category {
+  id        String    @id @default(uuid())
+  name      String    @unique
+  createdAt DateTime  @default(now())
+  products  Product[]
+}
+
+model ServiceCategory {
+  id        String        @id @default(uuid())
+  name      String        @unique
+  slug      String        @unique
+  type      String
+  icon      String?
+  status    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  services  ServiceItem[]
+}
+
+model ServiceItem {
+  id          String           @id @default(uuid())
+  categoryId  String
+  category    ServiceCategory  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  title       String
+  slug        String           @unique
+  description String?
+  price       Float            @default(0.00)
+  commission  Float            @default(0.00)
+  status      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  requests    ServiceRequest[]
+  @@index([categoryId])
+}
+
+model ServiceRequest {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     ServiceItem @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  inputData   String
+  amountPaid  Float
+  commission  Float       @default(0.00)
+  status      String      @default("PENDING")
+  adminRemark String?
+  adminSlipData String?
+  adminSlipName String?
+  adminSlipMime String?
+  refundProcessed Boolean @default(false)
+  adminId String?
+  admin User? @relation("AdminServiceRequests", fields: [adminId], references: [id], onDelete: SetNull)
+  createdAt   DateTime    @default(now())
+  @@index([userId])
+  @@index([serviceId])
+}
+
+model Product {
+  id          String    @id @default(uuid())
+  vendorId    String
+  vendor      User?     @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  title       String?
+  name        String?
+  description String?
+  imageUrl    String?
+  category    String?
+  categoryId  String?
+  categoryRef Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  price       Float?
+  stock       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  @@index([vendorId])
+  @@index([categoryId])
+}
+
+model Order {
+  id          String   @id @default(uuid())
+  buyerId     String
+  buyer       User     @relation(fields: [buyerId], references: [id], onDelete: Cascade)
+  totalAmount Float
+  status      String   @default("PLACED")
+  createdAt   DateTime @default(now())
+  @@index([buyerId])
+}
+
+model IdCreationRequest {
+  id              String   @id @default(uuid())
+  creatorId       String
+  requestedRole   String
+  applicantName   String
+  applicantMobile String
+  applicantEmail  String?
+  username        String
+  passwordHash    String
+  amount          Float
+  utr             String?
+  paymentStatus   String   @default("PENDING")
+  status          String   @default("PENDING")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@index([creatorId])
+  @@index([requestedRole])
+  @@index([status])
+}
+
+model WalletTransaction {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type String
+  amount Float
+  reference String?
+  description String?
+  razorpayOrderId String?
+  razorpayPaymentId String?
+  status String @default("SUCCESS")
+  createdAt DateTime @default(now())
+  @@index([userId])
+  @@index([razorpayPaymentId])
+}
+
+model RazorpayPayment {
+  id String @id @default(uuid())
+  userId String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId String @unique
+  paymentId String? @unique
+  amount Float
+  purpose String @default("WALLET_RECHARGE")
+  status String @default("CREATED")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

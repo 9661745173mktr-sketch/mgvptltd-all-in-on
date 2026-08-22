@@ -2,95 +2,176 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { apiFetch, getCurrentUser } from '../app/utils/api';
 
-type Role = 'MASTER_DISTRIBUTOR' | 'SUPER_DISTRIBUTOR' | 'DISTRIBUTOR' | 'RETAILER';
-const FEES: Record<Role, number> = { MASTER_DISTRIBUTOR: 4999, SUPER_DISTRIBUTOR: 2999, DISTRIBUTOR: 1999, RETAILER: 999 };
-const LABELS: Record<Role, string> = { MASTER_DISTRIBUTOR: 'Master Distributor', SUPER_DISTRIBUTOR: 'Super Distributor', DISTRIBUTOR: 'Distributor', RETAILER: 'Retailer' };
-const UPI = '9661745173mktr-1@oksbi';
+const COMPANY_UPI_ID = '9661745173mktr-1@oksbi';
+const COMPANY_NAME = 'MG PVT LTD';
 
-function normalizeRole(value: any): Role | '' {
-  const role = String(value || '').toUpperCase().replace(/[-\s]/g, '_');
-  return ['MASTER_DISTRIBUTOR','SUPER_DISTRIBUTOR','DISTRIBUTOR','RETAILER'].includes(role) ? role as Role : '';
+type UserRole = 'admin' | 'master_distributor' | 'super_distributor' | 'distributor' | 'retailer' | 'unknown';
+type CreateRole = Exclude<UserRole, 'admin' | 'unknown'>;
+
+type RoleConfig = { key: CreateRole; label: string; fee: number; icon: string };
+
+const ROLES: RoleConfig[] = [
+  { key: 'master_distributor', label: 'Master Distributor', fee: 4999, icon: '👑' },
+  { key: 'super_distributor', label: 'Super Distributor', fee: 2999, icon: '⭐' },
+  { key: 'distributor', label: 'Distributor', fee: 1999, icon: '🏢' },
+  { key: 'retailer', label: 'Retailer', fee: 999, icon: '🛍️' },
+];
+
+function normalizeRole(value: unknown): UserRole {
+  const role = String(value || '').toLowerCase().trim().replace(/-/g, '_').replace(/\s+/g, '_');
+  if (['master', 'master_distributor', 'masterdistributor', 'master_dis'].includes(role)) return 'master_distributor';
+  if (['super', 'super_distributor', 'superdistributor', 'super_dis'].includes(role)) return 'super_distributor';
+  if (['distributor', 'dis'].includes(role)) return 'distributor';
+  if (['retailer', 'retailor', 'retail'].includes(role)) return 'retailer';
+  if (['admin', 'super_admin', 'administrator'].includes(role)) return 'admin';
+  return 'unknown';
 }
-function allowed(parent: Role | ''): Role[] {
-  if (parent === 'MASTER_DISTRIBUTOR') return ['SUPER_DISTRIBUTOR','DISTRIBUTOR','RETAILER'];
-  if (parent === 'SUPER_DISTRIBUTOR') return ['DISTRIBUTOR','RETAILER'];
-  if (parent === 'DISTRIBUTOR') return ['RETAILER'];
+
+function getCurrentUser() {
+  if (typeof window === 'undefined') return null;
+  for (const key of ['currentUser', 'user', 'loggedInUser']) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+  }
+  return null;
+}
+
+function allowedRoles(role: UserRole) {
+  if (role === 'admin') return ROLES;
+  if (role === 'master_distributor') return ROLES.filter(r => ['super_distributor', 'distributor', 'retailer'].includes(r.key));
+  if (role === 'super_distributor') return ROLES.filter(r => ['distributor', 'retailer'].includes(r.key));
+  if (role === 'distributor') return ROLES.filter(r => r.key === 'retailer');
   return [];
 }
 
 export default function CreateIdPanel() {
   const [user, setUser] = useState<any>(null);
-  const [role, setRole] = useState<Role | ''>('');
+  const [role, setRole] = useState<UserRole>('unknown');
+  const [selected, setSelected] = useState<CreateRole | ''>('');
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [utr, setUtr] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
-    setUser(getCurrentUser());
-    const refresh = () => setUser(getCurrentUser());
-    window.addEventListener('portal_user_updated', refresh);
-    return () => window.removeEventListener('portal_user_updated', refresh);
+    const current = getCurrentUser();
+    setUser(current);
+    setRole(normalizeRole(current?.role || current?.userRole || current?.user_role || current?.type));
+    if (current?.name) setName('');
+    if (current?.phone) setMobile('');
+    if (current?.email) setEmail('');
   }, []);
 
-  const parentRole = normalizeRole(user?.role);
-  const roles = useMemo(() => allowed(parentRole), [parentRole]);
-  const fee = role ? FEES[role] : 0;
-  const qr = role ? `upi://pay?pa=${encodeURIComponent(UPI)}&pn=${encodeURIComponent('MG PVT LTD')}&am=${fee.toFixed(2)}&cu=INR` : '';
+  const available = useMemo(() => allowedRoles(role), [role]);
+  const config = useMemo(() => ROLES.find(r => r.key === selected) || null, [selected]);
+  const upiPayload = useMemo(() => {
+    if (!config) return `upi://pay?pa=${encodeURIComponent(COMPANY_UPI_ID)}&pn=${encodeURIComponent(COMPANY_NAME)}&cu=INR`;
+    return `upi://pay?pa=${encodeURIComponent(COMPANY_UPI_ID)}&pn=${encodeURIComponent(COMPANY_NAME)}&am=${config.fee.toFixed(2)}&cu=INR`;
+  }, [config]);
 
-  const submit = async (e: React.FormEvent) => {
+  async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setMessage('');
-    if (!role) return setMessage('Please select the allowed child role.');
-    const cleanName = name.trim();
-    const cleanMobile = mobile.replace(/\D/g, '');
-    const cleanEmail = email.trim().toLowerCase();
-    if (cleanName.length < 2) return setMessage('Enter the real full name of the new user.');
-    if (cleanMobile.length !== 10) return setMessage('Enter a valid 10-digit mobile number.');
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) return setMessage('Enter a valid Gmail/email address.');
-    if (password.length < 6) return setMessage('Password must be at least 6 characters.');
-    if (utr.trim().length < 6) return setMessage('Enter UTR after completing the payment.');
-    if (!user?.id) return setMessage('Active parent session is required to create a child ID.');
-    setLoading(true);
-    try {
-      const res = await apiFetch('/api/id-requests/register', { method: 'POST', body: JSON.stringify({ name: cleanName, phone: cleanMobile, email: cleanEmail, password, role, parentId: user.id, username: username.trim() || undefined, utr: utr.trim(), paymentMethod: 'upi' }) });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `ID request failed (${res.status}).`);
-      setMessage(`Request submitted for ${LABELS[role]}. Admin payment verification and approval is required before activation.`);
-      setName(''); setMobile(''); setEmail(''); setUsername(''); setPassword(''); setUtr(''); setRole('');
-    } catch (error: any) {
-      setMessage(error?.message || 'Unable to submit request.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    if (!config) return alert('पहले ID Role select करें।');
+    if (!name.trim()) return alert('Applicant का real name दर्ज करें।');
+    if (!/^\d{10}$/.test(mobile.trim())) return alert('सही 10-digit mobile number दर्ज करें।');
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return alert('सही Gmail / email address दर्ज करें।');
+    if (username.trim().length < 4) return alert('Username / ID कम से कम 4 characters का होना चाहिए।');
+    if (password.length < 6) return alert('Password कम से कम 6 characters का होना चाहिए।');
+    if (!/^\d{6,50}$/.test(utr.trim())) return alert('Payment के बाद सही numeric UTR / Transaction Reference डालें।');
 
-  if (!user) return <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-5 text-slate-300">Please login with an active partner account first.</div>;
-  if (!roles.length) return <div className="rounded-2xl border border-amber-400/30 bg-amber-400/5 p-5 text-amber-200">Your current role does not have permission to create a child ID.</div>;
+    setBusy(true);
+    setMessage('');
+    try {
+      const creatorId = String(user?.id || user?.userId || user?.retailerId || '');
+      if (!creatorId && role !== 'admin') throw new Error('Current parent account नहीं मिला। कृपया logout करके real account से दोबारा login करें।');
+
+      const response = await fetch('/api/id-requests/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim(),
+          phone: mobile.trim(),
+          email: email.trim(),
+          password,
+          username: username.trim(),
+          role: selected,
+          parentId: role === 'admin' ? null : creatorId,
+          utr: utr.trim(),
+          paymentMethod: 'upi',
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data?.error || `Registration failed (${response.status}).`);
+
+      setMessage(`✅ ${config.label} ID request live database में submit हो गई है। ₹${config.fee.toLocaleString('en-IN')} payment का UTR Admin verify करेगा; approval के बाद ही ID ACTIVE होगी।`);
+      window.dispatchEvent(new Event('id_creation_updated'));
+      setSelected('');
+      setName('');
+      setMobile('');
+      setEmail('');
+      setUsername('');
+      setPassword('');
+      setUtr('');
+    } catch (err: any) {
+      alert(err?.message || 'ID creation request complete नहीं हुई।');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!user || available.length === 0) {
+    return <div className="rounded-3xl border border-amber-400/20 bg-slate-900/80 p-8 text-center"><div className="text-4xl">🔒</div><h2 className="mt-4 text-2xl font-black">ID Creation Permission</h2><p className="mt-3 text-sm text-slate-400">Current account role: <b className="text-cyan-300">{role}</b>. इस role से कोई नया partner ID create नहीं किया जा सकता।</p></div>;
+  }
 
   return (
-    <div className="rounded-3xl border border-cyan-400/30 bg-[#0b1324] p-6 shadow-2xl">
-      <h2 className="text-xl font-black text-cyan-300">🪪 Create Partner ID</h2>
-      <p className="mt-1 text-xs text-slate-400">Parent account: <b className="text-white">{user.name || '—'}</b> ({LABELS[parentRole] || user.role})</p>
-      <p className="mt-1 text-xs text-amber-200/80">Enter the <b>new user’s own</b> real name, mobile, Gmail/email, username and password below. Parent details are never copied into the new ID.</p>
-      <form onSubmit={submit} className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-        <label className="text-xs font-bold text-cyan-300">Allowed Role<select value={role} onChange={e => setRole(e.target.value as Role)} className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white"><option value="">Select role</option>{roles.map(r => <option key={r} value={r}>{LABELS[r]} — ₹{FEES[r].toLocaleString('en-IN')}</option>)}</select></label>
-        <label className="text-xs font-bold text-cyan-300">New User Real Name<input value={name} onChange={e => setName(e.target.value)} placeholder="Full legal name" required className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white" /></label>
-        <label className="text-xs font-bold text-cyan-300">New User Mobile<input value={mobile} onChange={e => setMobile(e.target.value)} placeholder="10-digit mobile" inputMode="numeric" required className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white" /></label>
-        <label className="text-xs font-bold text-cyan-300">New User Gmail / Email<input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="user@gmail.com" required className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white" /></label>
-        <label className="text-xs font-bold text-cyan-300">New Username<input value={username} onChange={e => setUsername(e.target.value)} placeholder="Optional login username" autoCapitalize="none" className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white" /></label>
-        <label className="text-xs font-bold text-cyan-300">New Password<input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Minimum 6 characters" required className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white" /></label>
-        {role && <div className="md:col-span-2 rounded-2xl border border-slate-700 bg-slate-900/70 p-4 text-center"><div className="text-sm font-bold text-cyan-300">Registration Fee: ₹{fee.toLocaleString('en-IN')}</div><div className="text-xs text-slate-400">UPI: {UPI}</div><div className="mt-3 inline-block rounded-xl bg-white p-3"><QRCodeSVG value={qr} size={170} /></div></div>}
-        <label className="md:col-span-2 text-xs font-bold text-cyan-300">UTR / Payment Reference<input value={utr} onChange={e => setUtr(e.target.value)} required placeholder="Enter UTR after payment" className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-sm text-white" /></label>
-        <button disabled={loading} className="md:col-span-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-5 py-3 font-black text-white disabled:opacity-50">{loading ? 'Submitting…' : 'Submit ID Request 🚀'}</button>
+    <div className="grid gap-6 lg:grid-cols-[1.05fr_.95fr]">
+      <form onSubmit={submit} className="rounded-3xl border border-white/5 bg-slate-900/80 p-6 shadow-2xl">
+        <h2 className="text-xl font-black">📝 Create Partner ID</h2>
+        <p className="mt-1 text-xs text-slate-500">Admin / parent role के अनुसार real database में partner request बनेगी।</p>
+
+        <label className="mt-6 block text-xs font-black text-cyan-300">Select ID Role *</label>
+        <select value={selected} onChange={e => setSelected(e.target.value as CreateRole)} className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm font-bold outline-none">
+          <option value="">Select Role</option>
+          {available.map(r => <option key={r.key} value={r.key}>{r.icon} {r.label} — ₹{r.fee.toLocaleString('en-IN')}</option>)}
+        </select>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <Field label="Applicant Full Name *" value={name} onChange={setName} type="text" />
+          <Field label="Mobile Number *" value={mobile} onChange={v => setMobile(v.replace(/\D/g, '').slice(0, 10))} type="tel" />
+          <Field label="Gmail / Email *" value={email} onChange={setEmail} type="email" />
+          <Field label="Login Username / ID *" value={username} onChange={setUsername} type="text" />
+          <Field label="Login Password *" value={password} onChange={setPassword} type="password" />
+        </div>
+
+        <div className="mt-5">
+          <label className="mb-2 block text-xs font-black text-cyan-300">Payment UTR / Transaction Reference *</label>
+          <input inputMode="numeric" value={utr} onChange={e => setUtr(e.target.value.replace(/\D/g, '').slice(0, 50))} maxLength={50} placeholder="UPI payment के बाद UTR डालें" className="w-full rounded-xl border border-emerald-400/20 bg-slate-800 px-4 py-3 text-sm font-bold outline-none focus:border-emerald-400" />
+        </div>
+
+        <button type="submit" disabled={busy || !config} className="mt-6 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 py-3.5 text-sm font-black disabled:opacity-40">
+          {busy ? 'Submitting to Live Database…' : config ? `Register & Submit ${config.label} ₹${config.fee.toLocaleString('en-IN')} 🚀` : 'Select ID Role First'}
+        </button>
+        {message && <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/10 p-4 text-xs text-emerald-300">{message}</div>}
       </form>
-      {message && <div className="mt-4 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-3 text-sm text-cyan-200">{message}</div>}
+
+      <div className="rounded-3xl border border-cyan-400/20 bg-gradient-to-br from-slate-900 via-[#0b1324] to-[#071020] p-6 text-center shadow-2xl">
+        <div className="text-[10px] font-black uppercase tracking-widest text-emerald-300">MG PVT LTD • UPI PAYMENT</div>
+        <h2 className="mt-3 text-xl font-black">📱 Scan & Pay</h2>
+        <div className="mt-6 flex justify-center"><div className="rounded-3xl bg-white p-5"><QRCodeSVG value={upiPayload} size={250} level="M" includeMargin /></div></div>
+        <div className="mt-6 rounded-2xl border border-emerald-400/20 bg-emerald-400/5 p-5"><div className="text-[10px] uppercase tracking-widest text-slate-500">Payable Amount</div><div className="mt-1 text-4xl font-black text-emerald-300">₹{config ? config.fee.toLocaleString('en-IN') : '0'}</div>{config && <div className="mt-1 text-xs text-slate-500">{config.label} ID Creation Fee</div>}</div>
+        <div className="mt-4 rounded-2xl border border-slate-800 bg-slate-950/70 p-4"><div className="text-[10px] uppercase tracking-widest text-slate-600">Pay To UPI ID</div><div className="mt-2 break-all text-sm font-black text-cyan-300">{COMPANY_UPI_ID}</div><div className="mt-1 text-[10px] text-slate-500">{COMPANY_NAME}</div></div>
+      </div>
     </div>
   );
+}
+
+function Field({ label, value, onChange, type }: { label: string; value: string; onChange: (value: string) => void; type: string }) {
+  return <div><label className="mb-2 block text-xs font-black text-slate-300">{label}</label><input type={type} value={value} onChange={e => onChange(e.target.value)} className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-sm outline-none focus:border-cyan-400" /></div>;
 }
