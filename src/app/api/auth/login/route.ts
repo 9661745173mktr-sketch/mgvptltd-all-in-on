@@ -1,24 +1,24 @@
 import { NextResponse } from 'next/server';
 
-function targetUrl() {
-  const raw = String(process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
-  if (!raw) return '';
-  try {
-    const url = new URL(raw);
-    if (!['http:', 'https:'].includes(url.protocol)) return '';
-    const base = url.toString().replace(/\/$/, '');
-    return `${base.endsWith('/api') ? base : `${base}/api`}/auth/login`;
-  } catch { return ''; }
-}
+const SUPABASE_URL = 'https://jbhqyxjixbnflseqrehe.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_o4p0aczIAEC_GDfD0f84T6Q_E8eK_yH4';
 
 export async function POST(request: Request) {
-  const target = targetUrl();
-  if (!target) return NextResponse.json({ error: 'Backend API is not configured on the live deployment.' }, { status: 503 });
   try {
-    const response = await fetch(target, { method: 'POST', headers: { 'content-type': 'application/json' }, body: await request.text(), cache: 'no-store' });
-    return new NextResponse(response.body, { status: response.status, statusText: response.statusText, headers: { 'content-type': response.headers.get('content-type') || 'application/json' } });
+    const body = await request.json();
+    const identifier = String(body?.email || body?.identifier || '').trim();
+    const password = String(body?.password || '');
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/portal_user_login`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_identifier: identifier, p_password: password }),
+      cache: 'no-store',
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return NextResponse.json({ error: data?.message || 'Login service failed.' }, { status: 502 });
+    if (data?.error) return NextResponse.json(data, { status: 401 });
+    return NextResponse.json(data);
   } catch (error: any) {
-    console.error('Login proxy error:', error);
-    return NextResponse.json({ error: 'Backend API is unreachable.', detail: error?.message || 'Unknown error' }, { status: 502 });
+    return NextResponse.json({ error: error?.message || 'Login failed.' }, { status: 500 });
   }
 }
