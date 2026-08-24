@@ -1,43 +1,31 @@
 import { NextResponse } from 'next/server';
 
-function backendUrl() {
-  const raw = String(process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
-  if (!raw) return '';
-  try {
-    const url = new URL(raw);
-    if (!['http:', 'https:'].includes(url.protocol)) return '';
-    const base = url.toString().replace(/\/$/, '');
-    return `${base.endsWith('/api') ? base : `${base}/api`}/id-requests/register`;
-  } catch {
-    return '';
-  }
-}
+const SUPABASE_URL = 'https://jbhqyxjixbnflseqrehe.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_o4p0aczIAEC_GDfD0f84T6Q_E8eK_yH4';
 
 export async function POST(request: Request) {
-  const target = backendUrl();
-  if (!target) {
-    return NextResponse.json({ error: 'Backend API is not configured on the live deployment.' }, { status: 503 });
-  }
-
   try {
-    const headers = new Headers({ 'content-type': 'application/json' });
-    const adminToken = request.headers.get('x-admin-token');
-    if (adminToken) headers.set('x-admin-token', adminToken);
-
-    const response = await fetch(target, {
+    const body = await request.json();
+    const payload = {
+      p_name: String(body?.name || '').trim(),
+      p_phone: String(body?.phone || '').trim(),
+      p_email: String(body?.email || '').trim(),
+      p_password: String(body?.password || ''),
+      p_role: String(body?.role || 'retailer'),
+      p_utr: body?.utr ? String(body.utr).trim() : null,
+      p_payment_method: String(body?.paymentMethod || 'upi'),
+    };
+    const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/portal_register_user`, {
       method: 'POST',
-      headers,
-      body: await request.text(),
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
       cache: 'no-store',
     });
-
-    return new NextResponse(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: { 'content-type': response.headers.get('content-type') || 'application/json' },
-    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return NextResponse.json({ error: data?.message || 'Registration service failed.' }, { status: 502 });
+    if (data?.error) return NextResponse.json(data, { status: 400 });
+    return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
-    console.error('ID request proxy error:', error);
-    return NextResponse.json({ error: 'Backend API is unreachable.', detail: error?.message || 'Unknown error' }, { status: 502 });
+    return NextResponse.json({ error: error?.message || 'Registration failed.' }, { status: 500 });
   }
 }
