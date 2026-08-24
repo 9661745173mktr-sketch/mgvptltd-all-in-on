@@ -3,9 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-// Normalize the public API URL before passing it to fetch(). This prevents the
-// browser's native "The string did not match the expected pattern" error when
-// the Vercel environment variable contains whitespace or an invalid URL.
 const RAW_API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '').trim();
 const API_BASE = (() => {
   if (!RAW_API_BASE) return '';
@@ -32,25 +29,61 @@ export default function AuthPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage('');
-    const endpoint = isLogin ? apiUrl('/api/auth/login') : apiUrl('/api/auth/register');
-    const saved = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || 'null') : null;
+
+    // Registration uses the actual ID-request endpoint present in this project.
+    const endpoint = isLogin
+      ? apiUrl('/api/auth/login')
+      : apiUrl('/api/id-requests/register');
+
     const payload = isLogin
       ? { email: email.trim(), password }
-      : { name: name.trim(), phone: phone.trim(), email: email.trim(), password, role, parentId: saved?.id || undefined };
+      : {
+          name: name.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
+          password,
+          role,
+          paymentMethod: 'upi',
+        };
 
     try {
-      const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+
       if (isLogin) {
-        localStorage.setItem('user', JSON.stringify(data.user));
+        const user = data.user;
+        if (!user) throw new Error('Login response is invalid.');
+
+        // Pending/deactivated accounts must not enter the portal.
+        const accountStatus = String(user.accountStatus || '').toLowerCase();
+        const paymentStatus = String(user.paymentStatus || '').toLowerCase();
+        const active = accountStatus === 'active' && paymentStatus === 'verified';
+        if (!active) {
+          localStorage.removeItem('user');
+          const statusText = accountStatus === 'pending'
+            ? 'Your ID is pending admin approval/payment verification.'
+            : accountStatus === 'deactive' || accountStatus === 'deactivated'
+              ? 'Your ID is deactivated. Please contact admin.'
+              : 'Your ID is not active yet. Please wait for admin approval.';
+          setMessage(statusText);
+          return;
+        }
+
+        localStorage.setItem('user', JSON.stringify(user));
         setMessage('Login Successful! Redirecting...');
         setTimeout(() => router.push('/dashboard'), 400);
       } else {
-        setMessage('Request submitted. Admin payment verification ke baad ID activate hogi.');
+        setMessage('Account request submitted. Admin payment verification ke baad ID activate hogi.');
         setTimeout(() => setIsLogin(true), 1200);
       }
-    } catch (err: any) { setMessage(err?.message || 'Something went wrong.'); }
+    } catch (err: any) {
+      setMessage(err?.message || 'Something went wrong.');
+    }
   };
 
   return (
